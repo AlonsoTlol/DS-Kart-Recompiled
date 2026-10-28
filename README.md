@@ -38,7 +38,7 @@ Because it runs natively, it can go beyond the original:
 
 ## Credits
 
-- Made by **alontube** — [alontube.pages.dev](https://alontube.pages.dev), together with **Claude** (Anthropic's AI), who wrote most of the code with him
+- Made by **alontube** — [alontube.pages.dev](https://alontube.pages.dev), together with **Claude** (Anthropic's AI), who co-wrote most of the code
 - Inspired by [WiiCompiled](https://github.com/patchzyy/wiicompiled), the Mario Kart Wii recompilation.
   It doesn't use its code: the idea of translating the game instead of emulating it comes from there.
 
@@ -87,7 +87,7 @@ Como funciona de forma nativa, puede ir más allá del original:
 
 ## Créditos
 
-- Hecho por **alontube**: [alontube.pages.dev](https://alontube.pages.dev), junto con **Claude** (la IA de Anthropic), que ha escrito con él la mayor parte del código
+- Hecho por **alontube**: [alontube.pages.dev](https://alontube.pages.dev), junto con **Claude** (la IA de Anthropic), con quien ha escrito la mayor parte del código
 - Inspirado en [WiiCompiled](https://github.com/patchzyy/wiicompiled), la recompilación de Mario Kart Wii.
   No usa su código: la idea de traducir el juego en vez de emularlo viene de ahí.
 
