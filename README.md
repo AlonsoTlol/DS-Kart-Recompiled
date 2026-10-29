@@ -31,6 +31,23 @@ Because it runs natively, it can go beyond the original:
 - A dump of **your own** European *Mario Kart DS* cartridge (game code `AMCP`).
   **The game is not and will never be included here.**
 
+## System requirements
+
+|  | Minimum | Recommended |
+|---|---|---|
+| **OS** | Windows 10 64-bit | Windows 11 64-bit |
+| **Processor** | 4 cores (Intel Core i5-4590 / AMD Ryzen 5 1500X) | 8 cores or more (Intel Core i7-8700 / AMD Ryzen 7 3700X) |
+| **Memory** | 4 GB RAM | 8 GB RAM |
+| **Graphics** | Any graphics card with OpenGL (integrated is fine) | Any graphics card with OpenGL (integrated is fine) |
+| **Storage** | 1.5 GB free space | 1.5 GB free space |
+| **Network** | Internet connection the first time (about 200 MB of downloads) | Broadband Internet connection |
+| **Other** | | Controller (PS5, PS4 or Xbox) and microphone for Balloon Battle |
+
+The 3D is drawn by the processor, so the processor matters much more than the graphics card.
+The first time you press PLAY, the launcher translates and compiles the game on your PC:
+it takes about 5 minutes with 8 cores (longer with fewer). After that the game starts instantly.
+These figures are estimates: so far it has been tested on an Intel Core i7-14700KF with 32 GB of RAM.
+
 ## Planned
 
 - Local multiplayer over the internet (for example with Radmin VPN)
@@ -79,6 +96,23 @@ Como funciona de forma nativa, puede ir más allá del original:
 - Windows
 - Una copia de **tu propio cartucho** de *Mario Kart DS* europeo (código `AMCP`).
   **El juego no está ni estará nunca aquí.**
+
+## Requisitos del sistema
+
+|  | Mínimo | Recomendado |
+|---|---|---|
+| **Sistema operativo** | Windows 10 de 64 bits | Windows 11 de 64 bits |
+| **Procesador** | 4 núcleos (Intel Core i5-4590 / AMD Ryzen 5 1500X) | 8 núcleos o más (Intel Core i7-8700 / AMD Ryzen 7 3700X) |
+| **Memoria** | 4 GB de RAM | 8 GB de RAM |
+| **Gráficos** | Cualquier tarjeta gráfica con OpenGL (vale la integrada) | Cualquier tarjeta gráfica con OpenGL (vale la integrada) |
+| **Almacenamiento** | 1,5 GB de espacio libre | 1,5 GB de espacio libre |
+| **Red** | Conexión a Internet la primera vez (unos 200 MB de descargas) | Conexión de banda ancha a Internet |
+| **Otros** | | Mando (PS5, PS4 o Xbox) y micrófono para la Batalla de globos |
+
+El 3D lo dibuja el procesador, así que importa mucho más el procesador que la tarjeta gráfica.
+La primera vez que le das a JUGAR, el launcher traduce y compila el juego en tu PC:
+tarda unos 5 minutos con 8 núcleos (más con menos). Después el juego arranca al momento.
+Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con 32 GB de RAM.
 
 ## Planeado
 
