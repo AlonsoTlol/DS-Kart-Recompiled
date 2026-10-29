@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -46,6 +47,21 @@ partial class Launcher {
         if (args.Length >= 2 && args[0] == "--prepara") {  // prueba: prepara el juego sin ventana (resultado en un archivo)
             string r = "ok";
             try { Prepara_(); } catch (Exception ex) { r = ex.ToString(); }
+            File.WriteAllText(args[1], r, new UTF8Encoding(false));
+            return;
+        }
+        if (args.Length >= 2 && args[0] == "--instala-ultima") {  // prueba: instala la última versión de GitHub sin ventana
+            string r = "ok";
+            try {
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+                using (var w = new WebClient()) {
+                    w.Headers.Add("User-Agent", "DS-Kart-Recompiled-Launcher");
+                    string json = w.DownloadString("https://api.github.com/repos/" + REPO + "/releases/latest");
+                    var m = System.Text.RegularExpressions.Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\"");
+                    Actualiza_(m.Groups[1].Value);
+                    r += " " + m.Groups[1].Value;
+                }
+            } catch (Exception ex) { r = ex.ToString(); }
             File.WriteAllText(args[1], r, new UTF8Encoding(false));
             return;
         }
