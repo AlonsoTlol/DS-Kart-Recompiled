@@ -6,8 +6,10 @@
 
 **A native PC port of the European Mario Kart DS, made by static recompilation — no emulator.**
 
-> 🚧 **Work in progress.** The code and a ready-to-play launcher will be published here when the project is
-> finished. Star or watch the repository to know when it's out.
+<p align="center"><a href="https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest"><b>⬇️ Download the latest version</b></a></p>
+
+> ⚠️ **These are the first versions and they have plenty of bugs.** If you find one, please report it in
+> [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues) (what you were doing, and a screenshot or video if you can). Thanks!
 
 ## What it is
 
@@ -27,9 +29,23 @@ Because it runs natively, it can go beyond the original:
 
 ## What you will need
 
-- Windows
+- Windows 10 or 11 (64-bit)
 - A dump of **your own** European *Mario Kart DS* cartridge (game code `AMCP`).
   **The game is not and will never be included here.**
+
+## How to play
+
+1. Download `DS-Kart-Recompiled-vX.Y.Z.zip` from the [latest release](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
+   and extract it anywhere (don't run it from inside the zip).
+2. Open `Launcher.exe`, pick your language and, in Settings, your ROM.
+3. Enter your name and press **PLAY**. The first time, the launcher downloads Python and the compiler from their
+   official sites, translates the code of **your** ROM and compiles it for your PC (a few minutes).
+4. When there is a new version, the launcher shows an **Update** button. Your ROM, settings and save are kept.
+
+No Nintendo code is distributed: the download only contains this project's own code, and the game is
+generated on your PC from your own cartridge.
+
+If Windows SmartScreen warns you, click "More info" › "Run anyway" (the launcher isn't signed).
 
 ## System requirements
 
@@ -48,10 +64,11 @@ The first time you press PLAY, the launcher translates and compiles the game on 
 it takes about 5 minutes with 8 cores (longer with fewer). After that the game starts instantly.
 These figures are estimates: so far it has been tested on an Intel Core i7-14700KF with 32 GB of RAM.
 
-## Planned
+## Status
 
-- Local multiplayer over the internet (for example with Radmin VPN)
-- Online play through community servers
+- ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
+- ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
+- 🔜 **Online play is not available yet.** It's coming soon, through community servers.
 
 ## Credits
 
@@ -71,8 +88,10 @@ Fan project **not affiliated with Nintendo**. *Mario Kart* and *Nintendo DS* are
 
 **Port nativo para PC de Mario Kart DS (versión europea) hecho por recompilación estática: sin emulador.**
 
-> 🚧 **En desarrollo.** El código y un launcher listo para jugar se publicarán aquí cuando el proyecto esté
-> terminado. Dale a la estrella o a "Watch" para enterarte cuando salga.
+<p align="center"><a href="https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest"><b>⬇️ Descargar la última versión</b></a></p>
+
+> ⚠️ **Son las primeras versiones y tienen muchos bugs.** Si encuentras alguno, súbelo a
+> [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues) (qué estabas haciendo y, si puedes, una captura o un vídeo). ¡Gracias!
 
 ## Qué es
 
@@ -91,11 +110,26 @@ Como funciona de forma nativa, puede ir más allá del original:
 - **Launcher propio** en español, inglés, francés, alemán e italiano
 - **Todo desbloqueado** de serie
 
-## Qué hará falta
+## Qué hace falta
 
-- Windows
+- Windows 10 u 11 (64 bits)
 - Una copia de **tu propio cartucho** de *Mario Kart DS* europeo (código `AMCP`).
   **El juego no está ni estará nunca aquí.**
+
+## Cómo jugar
+
+1. Descarga `DS-Kart-Recompiled-vX.Y.Z.zip` de la [última versión](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
+   y descomprímelo donde quieras (no lo abras desde dentro del zip).
+2. Abre `Launcher.exe`, elige el idioma y, en Ajustes, tu ROM.
+3. Pon tu nombre y dale a **JUGAR**. La primera vez el launcher descarga Python y el compilador de sus páginas
+   oficiales, traduce el código de **tu** ROM y lo compila para tu PC (unos minutos).
+4. Cuando hay una versión nueva, el launcher enseña un botón de **Actualizar**. Tu ROM, tus ajustes y tu partida
+   no se tocan.
+
+No se reparte código de Nintendo: la descarga solo lleva el código de este proyecto, y el juego se genera en tu
+PC a partir de tu propio cartucho.
+
+Si Windows SmartScreen avisa, pulsa "Más información" › "Ejecutar de todas formas" (el launcher no está firmado).
 
 ## Requisitos del sistema
 
@@ -114,10 +148,11 @@ La primera vez que le das a JUGAR, el launcher traduce y compila el juego en tu 
 tarda unos 5 minutos con 8 núcleos (más con menos). Después el juego arranca al momento.
 Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con 32 GB de RAM.
 
-## Planeado
+## Estado
 
-- Multijugador local por internet (por ejemplo con Radmin VPN)
-- Juego en línea con servidores de la comunidad
+- ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
+- ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
+- 🔜 **El online todavía no está disponible.** Llegará pronto, con servidores de la comunidad.
 
 ## Créditos
 

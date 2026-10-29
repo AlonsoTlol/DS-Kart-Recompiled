@@ -1,0 +1,30 @@
+# Nada de Nintendo en el repositorio: ni la ROM ni lo que se saca de ella.
+*.nds
+*.srl
+rom/
+extraido/
+generado/
+build/
+__pycache__/
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.o
+*.elf
+*.bin
+*.sav
+repeticiones/
+
+# Capturas del juego y registros de pruebas
+capturas/
+*_err.txt
+*_log.txt
+faltan.txt.antes
+ajustes.ini
+# Vídeo de la portada: grabado del juego del propio usuario (es de Nintendo: nunca al repositorio)
+portada.mp4
+herramientas/
+actualizacion/
+publicar/*.zip
+Launcher.old.exe

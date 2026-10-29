@@ -1,0 +1,10 @@
+<DrawingGroup>
+  <GeometryDrawing Brush='#00000000' Geometry='M0,0 L512,512'/>
+  <GeometryDrawing Brush='#232A57' Geometry='F1 M39.0,256.0 A217.0,217.0 0 1 1 473.0,256.0 A217.0,217.0 0 1 1 39.0,256.0 Z'/>
+  <GeometryDrawing Brush='#FF4D3D' Geometry='F1 M57.7,183.8 A211.0,211.0 0 0 1 438.7,150.5 L464.7,135.5 L437.0,237.0 L362.5,194.5 L388.5,179.5 A153.0,153.0 0 0 0 112.2,203.7 Z'/>
+  <GeometryDrawing Brush='#FFC940' Geometry='F1 M454.3,328.2 A211.0,211.0 0 0 1 73.3,361.5 L47.3,376.5 L75.0,275.0 L149.5,317.5 L123.5,332.5 A153.0,153.0 0 0 0 399.8,308.3 Z'/>
+  <GeometryDrawing Brush='#F3F4FF' Geometry='F1 M138.0,256.0 A118.0,118.0 0 1 1 374.0,256.0 A118.0,118.0 0 1 1 138.0,256.0 Z'/>
+  <GeometryDrawing Brush='#232A57' Geometry='F1 M178.0,256.0 A78.0,78.0 0 1 1 334.0,256.0 A78.0,78.0 0 1 1 178.0,256.0 Z'/>
+  <GeometryDrawing Brush='#F3F4FF' Geometry='F1 M204.0,256.0 A52.0,52.0 0 1 1 308.0,256.0 A52.0,52.0 0 1 1 204.0,256.0 Z'/>
+  <GeometryDrawing Brush='#12152A' Geometry='F1 M256.0,256.0 L256.0,204.0 A52.0,52.0 0 0 1 308.0,256.0 Z M256.0,256.0 L256.0,308.0 A52.0,52.0 0 0 1 204.0,256.0 Z'/>
+</DrawingGroup>
