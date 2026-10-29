@@ -26,7 +26,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 partial class Launcher {
-    const string VERSION_NUM = "0.1.0";
+    const string VERSION_NUM = "0.1.1";
     const string REPO = "AlonsoTlol/DS-Kart-Recompiled";
 
     const string URL_PYTHON = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";

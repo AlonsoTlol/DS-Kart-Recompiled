@@ -245,10 +245,11 @@ static void actualiza(void) {
                     m_lat_max[0] * 1000.0 / RELOJ);
             {
                 extern volatile double g_render_ms_suma, g_render_ms_max;
-                extern volatile int g_render_n;
-                fprintf(stderr, "      pintar escena 3D: media %.2f ms, máx %.2f ms (%d escenas)\n",
-                        g_render_n ? g_render_ms_suma / g_render_n : 0.0, g_render_ms_max, g_render_n);
-                g_render_ms_suma = g_render_ms_max = 0; g_render_n = 0;
+                extern volatile int g_render_n, g_render_sub;
+                fprintf(stderr, "      pintar escena 3D: media %.2f ms, máx %.2f ms (%d escenas, %.1f intermedias cada una)\n",
+                        g_render_n ? g_render_ms_suma / g_render_n : 0.0, g_render_ms_max, g_render_n,
+                        g_render_n ? (double)g_render_sub / g_render_n : 0.0);
+                g_render_ms_suma = g_render_ms_max = 0; g_render_n = 0; g_render_sub = 0;
             }
             memset(m_lat, 0, sizeof m_lat); memset(m_lat_max, 0, sizeof m_lat_max); memset(m_lat_n, 0, sizeof m_lat_n);
             m_video = m_video_max = 0;

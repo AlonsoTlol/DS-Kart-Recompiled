@@ -665,7 +665,7 @@ static Salida salidas[3];
 static volatile int salida_actual, polis_ultima;
 static volatile uint64_t cont_frames, cont_saltadas;
 volatile double g_render_ms_suma, g_render_ms_max;
-volatile int g_render_n;
+volatile int g_render_n, g_render_sub;
 
 // Pasa los polígonos de la lista a coordenadas de pantalla y descarta los que no se ven
 static void prepara(const Trabajo *tj, const Poli *lst, int n) {
@@ -845,13 +845,14 @@ static void pinta_banda(int yb0, int yb1) {
 
 #define NBANDAS 24
 static HANDLE ev_banda_ir[NBANDAS], ev_banda_hecha[NBANDAS], ev_trabajo, ev_libre;
+static int nbandas = NBANDAS;  // tantas como núcleos menos uno (el del juego), como mucho NBANDAS
 
 static DWORD WINAPI hilo_banda(LPVOID arg) {
     int b = (int)(intptr_t)arg;
-    int filas = AL / NBANDAS;
+    int filas = AL / nbandas;
     for (;;) {
         WaitForSingleObject(ev_banda_ir[b], INFINITE);
-        pinta_banda(b * filas, b * filas + filas - 1);
+        pinta_banda(b * filas, b == nbandas - 1 ? AL - 1 : b * filas + filas - 1);
         SetEvent(ev_banda_hecha[b]);
     }
 }
@@ -1020,9 +1021,11 @@ static int nvis_de(const Poli *lst, int n) {
 }
 
 static void pinta_todo(void) {
-    for (int b = 0; b < NBANDAS; b++) SetEvent(ev_banda_ir[b]);
-    WaitForMultipleObjects(NBANDAS, ev_banda_hecha, TRUE, INFINITE);
+    for (int b = 0; b < nbandas; b++) SetEvent(ev_banda_ir[b]);
+    WaitForMultipleObjects(nbandas, ev_banda_hecha, TRUE, INFINITE);
 }
+
+static double ms_imagen;  // lo que tarda en pintarse una imagen (media móvil), para las intermedias
 
 static DWORD WINAPI hilo_render(LPVOID arg) {
     (void)arg;
@@ -1035,6 +1038,13 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
         int otra = (salida_actual + 1) % 3;
         Salida *S = &salidas[otra];
         int nsub = trabajo.interp && nant > 0 ? sub_por_escena : 0;
+        // En un PC justo no da tiempo a pintar todas las intermedias antes de la escena siguiente, y entonces
+        // se saltaban escenas de verdad (el 3D a tirones). Se pintan las que quepan en ~3/4 de un fotograma
+        // según lo que ha tardado cada imagen hasta ahora.
+        if (nsub && ms_imagen > 0) {
+            int caben = (int)(12.5 / ms_imagen) - 1;
+            if (caben < nsub) nsub = caben < 0 ? 0 : caben;
+        }
         // casi nada empareja (corte de cámara, otra pantalla): esta vez sin intermedias
         if (nsub && empareja(lst, n) * 2 < nvis_de(lst, n)) nsub = 0;
         for (int j = 1; j <= nsub; j++) {
@@ -1052,7 +1062,9 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
         QueryPerformanceFrequency(&fr);
         {  // para MKDS_MIDE: cuánto tarda en pintarse una escena
             double ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)fr.QuadPart;
-            g_render_ms_suma += ms; g_render_n++;
+            double una = ms / (nsub + 1);
+            ms_imagen = ms_imagen > 0 ? ms_imagen * 0.9 + una * 0.1 : una;
+            g_render_ms_suma += ms; g_render_n++; g_render_sub += nsub;
             if (ms > g_render_ms_max) g_render_ms_max = ms;
         }
         if (esc == 1) {
@@ -1087,7 +1099,16 @@ static void arranca_hilos(void) {
     AL = 192 * esc;
     ev_trabajo = CreateEventW(NULL, FALSE, FALSE, NULL);
     ev_libre = CreateEventW(NULL, FALSE, TRUE, NULL);
-    for (int b = 0; b < NBANDAS; b++) {
+    DWORD_PTR del_proceso = 0, del_sistema = 0;  // núcleos que puede usar el juego
+    GetProcessAffinityMask(GetCurrentProcess(), &del_proceso, &del_sistema);
+    // Con más bandas que núcleos el juego y la música se quedaban sin turno y se saltaban más escenas
+    // (probado limitando el juego a 2 y 4 núcleos). MKDS_BANDAS=n las fija, para pruebas.
+    nbandas = -1;
+    for (; del_proceso; del_proceso &= del_proceso - 1) nbandas++;
+    if (getenv("MKDS_BANDAS")) nbandas = atoi(getenv("MKDS_BANDAS"));
+    if (nbandas < 1) nbandas = 1;
+    if (nbandas > NBANDAS) nbandas = NBANDAS;
+    for (int b = 0; b < nbandas; b++) {
         ev_banda_ir[b] = CreateEventW(NULL, FALSE, FALSE, NULL);
         ev_banda_hecha[b] = CreateEventW(NULL, FALSE, FALSE, NULL);
         CloseHandle(CreateThread(NULL, 0, hilo_banda, (LPVOID)(intptr_t)b, 0, NULL));
