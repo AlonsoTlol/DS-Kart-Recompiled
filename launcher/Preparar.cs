@@ -394,9 +394,8 @@ partial class Launcher {
                     string json = w.DownloadString("https://api.github.com/repos/" + REPO + "/releases/latest");
                     var m = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9.]+)\"");
                     if (m.Success) tag = m.Groups[1].Value;
-                    // cada versión trae dos zips: el completo (con el vídeo de la portada, para descargarlo la
-                    // primera vez) y "actualizacion-…" sin el vídeo, que es el que usa este botón
-                    foreach (Match a in Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+/actualizacion[^\"/]*\\.zip)\""))
+                    // el zip de la versión (el mismo que se descarga la primera vez)
+                    foreach (Match a in Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\""))
                         if (zip == null) zip = a.Groups[1].Value;
                 }
             } catch (Exception ex) { error = ex.Message; }

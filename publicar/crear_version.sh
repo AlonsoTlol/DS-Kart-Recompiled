@@ -1,7 +1,6 @@
 #!/bin/sh
-# Crea los zips de una versión para GitHub Releases:
-#   publicar/DS-Kart-Recompiled-vX.Y.Z.zip  completo, con el vídeo de la portada (para descargarlo la primera vez)
-#   publicar/actualizacion-vX.Y.Z.zip       lo mismo sin el vídeo (lo usa el botón de actualizar del launcher)
+# Crea el zip de una versión para GitHub Releases: publicar/DS-Kart-Recompiled-vX.Y.Z.zip (con el vídeo de la
+# portada). Es el único: se descarga la primera vez y lo usa también el botón de actualizar del launcher.
 # Solo lleva nuestro código (el launcher genera el juego desde la ROM de cada uno). Nunca rom/, extraido/,
 # generado/, build/ ni partida.sav.
 # La versión es VERSION_NUM de launcher/Preparar.cs: súbela antes de crear una nueva.
@@ -15,7 +14,6 @@ cp Launcher.exe LICENSE faltan.txt faltan7.txt publicar/README.txt $D/
 cp tools/nds_rom.py tools/recomp.py tools/traducir_mkds.py $D/tools/
 cp runtime/*.c runtime/*.h $D/runtime/
 rm -f publicar/*.zip publicar/portada.mp4
-(cd publicar/tmp && powershell -NoProfile -Command "Compress-Archive -Path DS-Kart-Recompiled -DestinationPath ../actualizacion-v$V.zip")
 cp portada.mp4 $D/
 (cd publicar/tmp && powershell -NoProfile -Command "Compress-Archive -Path DS-Kart-Recompiled -DestinationPath ../DS-Kart-Recompiled-v$V.zip")
 rm -rf publicar/tmp
