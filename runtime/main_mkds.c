@@ -141,9 +141,24 @@ static LONG WINAPI al_romperse(EXCEPTION_POINTERS *e) {
     if (cod != EXCEPTION_ACCESS_VIOLATION && cod != EXCEPTION_STACK_OVERFLOW &&
         cod != EXCEPTION_ILLEGAL_INSTRUCTION && cod != EXCEPTION_INT_DIVIDE_BY_ZERO)
         return EXCEPTION_CONTINUE_SEARCH;
-    fprintf(stderr, "\n[mkds] fallo %08lX en el PC (mkds.exe+%llX)\n", e->ExceptionRecord->ExceptionCode,
-            (unsigned long long)((char *)e->ExceptionRecord->ExceptionAddress -
-                                 (char *)GetModuleHandle(NULL)));
+    // en qué módulo (mkds.exe, el controlador de la tarjeta gráfica...) y desde dónde se llegó ahí
+    void *dir = e->ExceptionRecord->ExceptionAddress;
+    HMODULE mod = NULL;
+    char nombre[MAX_PATH] = "?";
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)dir, &mod))
+        GetModuleFileNameA(mod, nombre, MAX_PATH);
+    fprintf(stderr, "\n[mkds] fallo %08lX en el PC (%s+%llX)\n", e->ExceptionRecord->ExceptionCode,
+            strrchr(nombre, '\\') ? strrchr(nombre, '\\') + 1 : nombre, (unsigned long long)((char *)dir - (char *)mod));
+#ifdef _M_X64
+    {  // la pila del hilo que falló: direcciones de vuelta que caen dentro de mkds.exe
+        char *base = (char *)GetModuleHandle(NULL), **pila = (char **)e->ContextRecord->Rsp;
+        fprintf(stderr, "    llamadas en mkds.exe:");
+        for (int i = 0, n = 0; i < 4096 && n < 12; i++)
+            if (pila[i] > base && pila[i] < base + 0x8000000) { fprintf(stderr, " +%llX", (unsigned long long)(pila[i] - base)); n++; }
+        fprintf(stderr, "\n");
+    }
+#endif
     volcado(&g_cpu9);
     volcado(&g_cpu7);
     fflush(stderr);
@@ -176,9 +191,12 @@ static void *carga(const char *ruta, size_t *n) {
 // (empieza por "NKSY") y el nombre va detrás, en UTF-16, hasta 10 letras. El juego lo copia del firmware al
 // crear la partida; la del usuario se creó con el nombre vacío y el juego no deja cambiarlo. Se escribe en
 // cada fotograma si no coincide; al guardar, el juego lo deja ya en la partida.
+static int nombre_listo;
+void nombre_cambia(void) { nombre_listo = 0; }  // el menú ha cambiado MKDS_NOMBRE
+
 void nombre_por_frame(void) {
-    static int listo;
     static uint16_t nombre[10];
+    int listo = nombre_listo;
     if (!listo) {
         listo = 1;
         const char *n = getenv("MKDS_NOMBRE");
@@ -187,6 +205,7 @@ void nombre_por_frame(void) {
         w[10] = 0;
         for (int i = 0; i < 10; i++) nombre[i] = (uint16_t)w[i];
         if (!nombre[0]) listo = 2;  // sin nombre: no se toca nada
+        nombre_listo = listo;
     }
     if (listo == 2) return;
     uint8_t *p = g_main + (0x023CE2C8 & 0x3FFFFF);

@@ -4,9 +4,9 @@
 //
 // Controles:  flechas = cruceta   X = A   Z = B   S = X   A = Y
 //             Q = L   W = R   Enter = Start   Retroceso = Select   F11 = pantalla completa
-//             F10 = guardar los últimos 30 segundos en vídeo (repeticiones/)
+//             F10 = guardar los últimos 30 segundos en vídeo (repeticiones/)   F1 = menú de ajustes
 // Mando: botón de abajo = A, derecha = B, arriba = X, izquierda = Y (por posición, como la DS), LB/LT = L,
-//        RB/RT = R, Start, Back/Create = Select, cruceta o stick izquierdo
+//        RB/RT = R, Start, Back/Create = Select, cruceta o stick izquierdo; L3 + R3 = menú de ajustes
 //
 // Como en Windows, las imágenes se pintan en un hilo aparte (hilo_pinta) al ritmo del monitor, desde una cola de
 // NM imágenes con la hora a la que toca enseñar cada una (así caben las intermedias de MKDS_FPS).
@@ -20,6 +20,7 @@
 #include <string.h>
 #include "video.h"
 #include "gpu3d.h"
+#include "menu.h"
 
 #define ESCALA 2
 
@@ -136,6 +137,7 @@ static void gl_pinta(int i, int subir) {
     } else {
         gl_rect(x, y, w, h, 0, 0, 1, 1);
     }
+    menu_pinta(ww, wh, vw, vh);  // el menú de ajustes y el contador de FPS, si toca
     SDL_GL_SwapWindow(ventana);  // espera al refresco del monitor
 }
 
@@ -144,6 +146,7 @@ static DWORD WINAPI hilo_pinta(LPVOID p) {
     SDL_GL_MakeCurrent(ventana, contexto);
     if (SDL_GL_SetSwapInterval(1)) fprintf(stderr, "[ventana] sin sincronía con el monitor: %s\n", SDL_GetError());
     glGenTextures(1, &tex_juego);
+    if (!menu_inicia()) fprintf(stderr, "[ventana] no se pudo preparar el menú\n");
     int subido = -1;
     int64_t ts_subido = 0;
     for (;;) {
@@ -157,6 +160,10 @@ static DWORD WINAPI hilo_pinta(LPVOID p) {
     }
     return 0;
 }
+
+static volatile int pide_pc;  // el menú pide pantalla completa (1) o ventana (2): se hace en ventana_mensajes
+int ventana_pantalla_completa(void) { return pantalla_completa; }
+void ventana_pide_pantalla_completa(int si) { pide_pc = si ? 1 : 2; }
 
 static void cambia_pantalla_completa(void) {
     pantalla_completa = !pantalla_completa;
@@ -328,13 +335,56 @@ static void raton(int mx, int my, int pulsado) {
     }
 }
 
+// los mandos conectados (para el menú): se apuntan aquí, en el hilo de la ventana (SDL no es de varios hilos)
+static char nombres_mandos[8][64];
+static volatile int n_mandos;
+int ventana_mandos(char nombres[][64], int max) {
+    int n = n_mandos < max ? n_mandos : max;
+    for (int i = 0; i < n; i++) memcpy(nombres[i], nombres_mandos[i], 64);
+    return n;
+}
+
+static int tecla_menu(SDL_Keycode k) {
+    switch (k) {
+    case SDLK_TAB: return MT_TAB;
+    case SDLK_LEFT: return MT_IZQ;
+    case SDLK_RIGHT: return MT_DER;
+    case SDLK_UP: return MT_ARRIBA;
+    case SDLK_DOWN: return MT_ABAJO;
+    case SDLK_HOME: return MT_INICIO;
+    case SDLK_END: return MT_FIN;
+    case SDLK_BACKSPACE: return MT_BORRAR;
+    case SDLK_DELETE: return MT_SUPR;
+    case SDLK_RETURN: case SDLK_KP_ENTER: return MT_ENTER;
+    case SDLK_ESCAPE: return MT_ESC;
+    case SDLK_LCTRL: case SDLK_RCTRL: return MT_CTRL;
+    case SDLK_LSHIFT: case SDLK_RSHIFT: return MT_SHIFT;
+    }
+    return 0;
+}
+
+// texto escrito (UTF-8) letra a letra para el menú
+static void texto_menu(const char *s) {
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p) {
+        unsigned c = *p++;
+        int mas = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+        c &= mas == 3 ? 0x07 : mas == 2 ? 0x0F : mas == 1 ? 0x1F : 0x7F;
+        while (mas-- && (*p & 0xC0) == 0x80) c = c << 6 | (*p++ & 0x3F);
+        menu_caracter(c);
+    }
+}
+
 // Mandos: se suman a lo que se pulse en el teclado
-static void lee_mandos(uint16_t *in, uint16_t *xy) {
+static void lee_mandos(uint16_t *in, uint16_t *xy, int *combo) {
     *in = 0x3FF;
     *xy = 3;
+    *combo = 0;
+    int n = 0;
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
         SDL_GameController *m = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
         if (!m) continue;
+        if (n < 8) snprintf(nombres_mandos[n++], 64, "%s", SDL_GameControllerName(m) ? SDL_GameControllerName(m) : "?");
         const int zona = 12000;
         int lx = SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_LEFTX);
         int ly = SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_LEFTY);
@@ -350,34 +400,68 @@ static void lee_mandos(uint16_t *in, uint16_t *xy) {
             if (t[k].pulsado) *in &= (uint16_t)~(1u << t[k].bit);
         if (B(Y)) *xy &= ~1;  // el de arriba: X de la DS
         if (B(X)) *xy &= ~2;  // el de la izquierda: Y de la DS
+        if (B(LEFTSTICK) && B(RIGHTSTICK)) *combo = 1;  // L3 + R3: menú de ajustes
 #undef B
     }
+    n_mandos = n;
 }
 
 void ventana_mensajes(void) {
     uint16_t mando_in = 0x3FF, mando_xy = 3;
+    int combo = 0;
     if (!oculto) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            int menu = menu_abierto();
             switch (e.type) {
             case SDL_QUIT: ExitProcess(0);
             case SDL_KEYDOWN:
+                if (e.key.keysym.sym == SDLK_F1) { if (!e.key.repeat) menu_alterna(); break; }
+                if (menu) { if (tecla_menu(e.key.keysym.sym)) menu_tecla(tecla_menu(e.key.keysym.sym), 1); break; }
                 if (e.key.repeat) break;
                 if (e.key.keysym.sym == SDLK_F11 || (e.key.keysym.sym == SDLK_ESCAPE && pantalla_completa))
                     cambia_pantalla_completa();
                 else if (e.key.keysym.sym == SDLK_F10) repe_guarda();
                 else tecla(e.key.keysym.sym, 1);
                 break;
-            case SDL_KEYUP: tecla(e.key.keysym.sym, 0); break;
-            case SDL_MOUSEBUTTONDOWN: if (e.button.button == SDL_BUTTON_LEFT) raton(e.button.x, e.button.y, 1); break;
-            case SDL_MOUSEMOTION: if (e.motion.state & SDL_BUTTON_LMASK) raton(e.motion.x, e.motion.y, 1); break;
-            case SDL_MOUSEBUTTONUP: if (e.button.button == SDL_BUTTON_LEFT) raton(e.button.x, e.button.y, 0); break;
+            case SDL_KEYUP:
+                if (tecla_menu(e.key.keysym.sym)) menu_tecla(tecla_menu(e.key.keysym.sym), 0);
+                tecla(e.key.keysym.sym, 0);  // soltar también para el juego
+                break;
+            case SDL_TEXTINPUT: if (menu) texto_menu(e.text.text); break;
+            case SDL_MOUSEWHEEL: menu_rueda((float)e.wheel.y); break;
+            case SDL_MOUSEBUTTONDOWN:
+                if (menu) { menu_raton((float)e.button.x, (float)e.button.y); menu_boton(e.button.button == SDL_BUTTON_LEFT ? 0 : 1, 1); }
+                else if (e.button.button == SDL_BUTTON_LEFT) raton(e.button.x, e.button.y, 1);
+                break;
+            case SDL_MOUSEMOTION:
+                if (menu) menu_raton((float)e.motion.x, (float)e.motion.y);
+                else if (e.motion.state & SDL_BUTTON_LMASK) raton(e.motion.x, e.motion.y, 1);
+                break;
+            case SDL_MOUSEBUTTONUP:
+                menu_boton(e.button.button == SDL_BUTTON_LEFT ? 0 : 1, 0);
+                if (e.button.button == SDL_BUTTON_LEFT) raton(e.button.x, e.button.y, 0);
+                break;
             case SDL_WINDOWEVENT: if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) calcula_destino(); break;
             case SDL_CONTROLLERDEVICEADDED: SDL_GameControllerOpen(e.cdevice.which); break;
             }
         }
         if (titulo_nuevo) { titulo_nuevo = 0; SDL_SetWindowTitle(ventana, titulo); }
-        lee_mandos(&mando_in, &mando_xy);
+        lee_mandos(&mando_in, &mando_xy, &combo);
+    }
+    static int combo_antes;  // L3 + R3: abre o cierra el menú
+    if (combo && !combo_antes) menu_alterna();
+    combo_antes = combo;
+    if (pide_pc) {
+        if ((pide_pc == 1) != (pantalla_completa != 0)) cambia_pantalla_completa();
+        pide_pc = 0;
+    }
+    if (menu_abierto()) {  // el menú se queda los botones; el juego no ve nada pulsado
+        menu_mando(mando_in);
+        g_keyinput = g_guion_in;
+        g_keyxy = g_guion_xy;
+        g_lapiz = 0;
+        return;
     }
     g_keyinput = teclado_in & mando_in & g_guion_in;
     g_keyxy = (uint16_t)(teclado_xy & mando_xy & g_guion_xy);
@@ -411,10 +495,11 @@ void ventana_guarda_bmp_de(const char *ruta, const uint32_t *px, int e) { escrib
 
 // Contador de FPS en el título de la ventana (lo pone ventana_mensajes: SDL quiere el hilo de la ventana)
 void ventana_titulo_fps(int fps, int fps3d) {
+    int pantalla = (int)InterlockedExchange(&enseñadas, 0);
+    menu_pon_fps(fps, fps3d, pantalla);
     if (oculto || !ventana) return;
     const char *av = repe_aviso();
     if (av) snprintf(titulo, sizeof titulo, "DS Kart Recompiled  -  %s", av);
-    else snprintf(titulo, sizeof titulo, "DS Kart Recompiled  -  %d FPS  (3D: %d)  pantalla: %d", fps, fps3d,
-                  (int)InterlockedExchange(&enseñadas, 0));
+    else snprintf(titulo, sizeof titulo, "DS Kart Recompiled  -  %d FPS  (3D: %d)  pantalla: %d", fps, fps3d, pantalla);
     titulo_nuevo = 1;
 }

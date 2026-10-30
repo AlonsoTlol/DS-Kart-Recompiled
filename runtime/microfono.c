@@ -25,9 +25,21 @@ static int16_t datos[NBUF][MUESTRAS];
 static SDL_AudioDeviceID entrada;
 #endif
 
+static int activo = -1, ganancia = -1;  // del menú (o MKDS_MICRO y MKDS_MICRO_GANANCIA)
+
 static int permitido(void) {
-    const char *m = getenv("MKDS_MICRO");
-    return !m || atoi(m) != 0;
+    if (activo < 0) {
+        const char *m = getenv("MKDS_MICRO");
+        activo = !m || atoi(m) != 0;
+    }
+    return activo;
+}
+
+void mic_pc_cierra(void);
+void mic_pon(int si, int g) {
+    activo = si;
+    ganancia = g > 0 ? g : 8;
+    if (!si) mic_pc_cierra();
 }
 
 #ifndef _WIN32
@@ -139,7 +151,6 @@ static void recoge(void) {
 // picos de ~550 en una habitación en silencio), así que se amplifica y se recorta como haría la DS.
 // MKDS_MICRO_GANANCIA (MICRO_GANANCIA en ajustes.ini): por cuánto se multiplica; 8 si no se dice.
 static int16_t amplifica(int s) {
-    static int ganancia = -1;
     if (ganancia < 0) {
         const char *g = getenv("MKDS_MICRO_GANANCIA");
         ganancia = g && atoi(g) > 0 ? atoi(g) : 8;

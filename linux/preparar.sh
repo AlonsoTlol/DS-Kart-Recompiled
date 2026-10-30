@@ -12,8 +12,8 @@ mkdir -p rom
 [ -f rom/mkds.nds ] || { echo "Falta la ROM: copia tu Mario Kart DS europeo a rom/mkds.nds (Missing ROM: copy your European Mario Kart DS to rom/mkds.nds)"; exit 1; }
 
 # 1. sacar el código de la ROM y traducirlo a C (solo si cambian las herramientas o la ROM)
-# (compat.h no cuenta: solo lo usa el runtime, no el código traducido)
-huella=$(cat tools/*.py faltan.txt faltan7.txt $(ls runtime/*.h | grep -v compat.h) rom/mkds.nds | cksum | cut -d' ' -f1)
+# (compat.h y menu.h no cuentan: solo los usa el runtime, no el código traducido)
+huella=$(cat tools/*.py faltan.txt faltan7.txt $(ls runtime/*.h | grep -v -e compat.h -e menu.h) rom/mkds.nds | cksum | cut -d' ' -f1)
 if [ "$(cat build/traduccion.txt 2>/dev/null)" != "$huella" ]; then
     echo "Leyendo tu ROM y traduciendo el código del juego a C..."
     rm -rf extraido generado build/obj build/traduccion.txt
@@ -38,7 +38,11 @@ lista() {
     for f in runtime/*.c; do
         case "$f" in runtime/ventana.c) continue;; esac  # la de Windows; en Linux va ventana_sdl.c
         o=build/obj/runtime/$(basename "$f" .c).o
-        [ -f "$o" ] && [ "$o" -nt "$f" ] && [ "$o" -nt runtime/compat.h ] || echo "$f $o runtime"
+        [ -f "$o" ] && [ "$o" -nt "$f" ] && [ "$o" -nt runtime/compat.h ] && [ "$o" -nt runtime/menu.h ] || echo "$f $o runtime"
+    done
+    for f in runtime/menu.cpp runtime/imgui/imgui.cpp runtime/imgui/imgui_draw.cpp runtime/imgui/imgui_tables.cpp              runtime/imgui/imgui_widgets.cpp runtime/imgui/imgui_impl_opengl2.cpp; do  # el menú de ajustes (C++)
+        o=build/obj/runtime/$(basename "$f" .cpp).o
+        [ -f "$o" ] && [ "$o" -nt "$f" ] && [ "$o" -nt runtime/menu.h ] && [ "$o" -nt runtime/imgui/imconfig.h ] || echo "$f $o menu"
     done
 }
 total=$(lista | wc -l)
@@ -46,8 +50,9 @@ if [ "$total" -gt 0 ]; then
     echo "Compilando $total archivos con $n núcleos (la primera vez tarda unos minutos)..."
     lista | xargs -P "$n" -L 1 sh -c '
         extra=""; [ "$3" = mkds7 ] && extra="-DCPU7"
-        [ "$3" != runtime ] && extra="$extra -Igenerado/$3"
+        [ "$3" != runtime ] && [ "$3" != menu ] && extra="$extra -Igenerado/$3"
         [ "$3" = runtime ] && extra="$(sdl2-config --cflags)"
+        [ "$3" = menu ] && extra="-fno-exceptions -fno-rtti -fno-threadsafe-statics"
         clang '"$OPC"' $extra -c "$1" -o "$2" || { echo "ERROR en $1"; exit 255; }' sh
 fi
 

@@ -24,6 +24,7 @@ Because it runs natively, it can go beyond the original:
 - **Full screen with both screens side by side**
 - **PS5, PS4 and Xbox controllers**, and your **PC microphone** for Balloon Battle
 - **Instant replays** — F10 saves the last 30 seconds as a video
+- **In-game settings menu** (F1 or L3 + R3): graphics, controllers, audio, name, language, FPS counter
 - **Its own launcher** in English, Spanish, French, German and Italian
 - **Everything unlocked** from the start
 
@@ -82,7 +83,6 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
 - 🧪 Linux (beta) — works, without a launcher window yet
-- 🔜 An in-game settings menu (graphics, controls, audio), for Windows and Linux
 - 🔜 **Online play is not available yet.** It's coming soon, through community servers.
 
 ## Credits
@@ -90,6 +90,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - Made by **alontube** — [alontube.pages.dev](https://alontube.pages.dev), together with **Claude** (Anthropic's AI), who co-wrote most of the code
 - Inspired by [WiiCompiled](https://github.com/patchzyy/wiicompiled), the Mario Kart Wii recompilation.
   It doesn't use its code: the idea of translating the game instead of emulating it comes from there.
+- The in-game menu uses [Dear ImGui](https://github.com/ocornut/imgui) (MIT license, `runtime/imgui/LICENSE.txt`).
 
 ## Disclaimer
 
@@ -122,6 +123,7 @@ Como funciona de forma nativa, puede ir más allá del original:
 - **Pantalla completa con las dos pantallas lado a lado**
 - **Mandos de PS5, PS4 y Xbox**, y el **micrófono del PC** para la Batalla de globos
 - **Repeticiones instantáneas**: F10 guarda los últimos 30 segundos en vídeo
+- **Menú de ajustes dentro del juego** (F1 o L3 + R3): gráficos, mandos, audio, nombre, idioma, contador de FPS
 - **Launcher propio** en español, inglés, francés, alemán e italiano
 - **Todo desbloqueado** de serie
 
@@ -181,7 +183,6 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
 - 🧪 Linux (beta): funciona, todavía sin ventana de launcher
-- 🔜 Un menú de ajustes dentro del juego (gráficos, mandos, audio), para Windows y Linux
 - 🔜 **El online todavía no está disponible.** Llegará pronto, con servidores de la comunidad.
 
 ## Créditos
@@ -189,6 +190,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - Hecho por **alontube**: [alontube.pages.dev](https://alontube.pages.dev), junto con **Claude** (la IA de Anthropic), con quien ha escrito la mayor parte del código
 - Inspirado en [WiiCompiled](https://github.com/patchzyy/wiicompiled), la recompilación de Mario Kart Wii.
   No usa su código: la idea de traducir el juego en vez de emularlo viene de ahí.
+- El menú dentro del juego usa [Dear ImGui](https://github.com/ocornut/imgui) (licencia MIT, `runtime/imgui/LICENSE.txt`).
 
 ## Aviso
 

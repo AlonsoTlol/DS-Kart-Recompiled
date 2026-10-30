@@ -26,7 +26,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 partial class Launcher {
-    const string VERSION_NUM = "0.1.3";
+    const string VERSION_NUM = "0.1.4";
     const string REPO = "AlonsoTlol/DS-Kart-Recompiled";
 
     const string URL_PYTHON = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";
@@ -77,8 +77,9 @@ partial class Launcher {
         var l = Lista(Ruta("tools"), "*.py");
         l.Add(Ruta("faltan.txt"));
         l.Add(Ruta("faltan7.txt"));
-        // compat.h no: solo lo usa el runtime (en Windows es windows.h), no el código traducido
-        foreach (string h in Lista(Ruta("runtime"), "*.h")) if (Path.GetFileName(h) != "compat.h") l.Add(h);
+        // compat.h y menu.h no: solo los usa el runtime, no el código traducido
+        foreach (string h in Lista(Ruta("runtime"), "*.h"))
+            if (Path.GetFileName(h) != "compat.h" && Path.GetFileName(h) != "menu.h") l.Add(h);
         return Huella(l);
     }
 
@@ -88,7 +89,19 @@ partial class Launcher {
             return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(LIBRERIAS))).Replace("-", "").Substring(0, 16);
     }
 
-    static string HuellaRuntime(string nombre) { return Huella(new[] { Ruta("runtime", nombre + ".c") }); }
+    static string HuellaRuntime(string nombre) {
+        return Huella(new[] { Ruta("runtime", nombre + ".c"), Ruta("runtime", "menu.h"), Ruta("runtime", "compat.h") });
+    }
+
+    // el menú de ajustes (C++, con Dear ImGui): sin excepciones ni RTTI, se enlaza con lo demás como C
+    static readonly string[] MENU = { "menu", "imgui/imgui", "imgui/imgui_draw", "imgui/imgui_tables",
+                                      "imgui/imgui_widgets", "imgui/imgui_impl_opengl2" };
+    const string OPCIONES_CPP = "-Iruntime -fno-exceptions -fno-rtti -fno-threadsafe-statics";
+    static string HuellaMenu(string nombre) {
+        return Huella(new[] { Ruta("runtime", nombre + ".cpp"), Ruta("runtime", "menu.h"),
+                              Ruta("runtime", "imgui", "imgui.h"), Ruta("runtime", "imgui", "imconfig.h") });
+    }
+    static string ObjetoMenu(string nombre) { return "build\\obj\\runtime\\" + nombre.Replace('/', '_') + ".o"; }
 
     static Dictionary<string, string> LeePreparado() {
         var d = new Dictionary<string, string>();
@@ -112,6 +125,8 @@ partial class Launcher {
         if (!p.TryGetValue("enlace", out h) || h != HuellaEnlace()) return true;  // otras librerías: volver a enlazar
         foreach (string n in RUNTIME)
             if (!p.TryGetValue(n, out h) || h != HuellaRuntime(n)) return true;
+        foreach (string n in MENU)
+            if (!p.TryGetValue("cpp:" + n, out h) || h != HuellaMenu(n)) return true;
         return false;
     }
 
@@ -196,6 +211,12 @@ partial class Launcher {
                 string o = "build\\obj\\runtime\\" + n + ".o";
                 if (traducir || !antes.TryGetValue(n, out h) || h != ahora[n] || !File.Exists(Ruta(o)))
                     trabajos.Add(new[] { "runtime\\" + n + ".c", o, "-Iruntime" });
+            }
+            foreach (string n in MENU) {
+                string k = "cpp:" + n, o = ObjetoMenu(n);
+                ahora[k] = HuellaMenu(n);
+                if (traducir || !antes.TryGetValue(k, out h) || h != ahora[k] || !File.Exists(Ruta(o)))
+                    trabajos.Add(new[] { "runtime\\" + n + ".cpp", o, OPCIONES_CPP });
             }
             Compila(trabajos);
             Progreso(T("Uniendo las piezas…"), -1);

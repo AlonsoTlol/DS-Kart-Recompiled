@@ -862,6 +862,12 @@ static DWORD WINAPI hilo_banda(LPVOID arg) {
 // polígono de la nueva se empareja con el de la anterior (mismo orden, misma textura, paleta y tipo; se
 // toleran polígonos que aparecen o desaparecen) y sus vértices sin recortar se mezclan.
 static int sub_por_escena = -1;  // imágenes intermedias por escena (MKDS_FPS / 60 - 1)
+
+// 60, 120, 180 o 240 (también desde el menú, en marcha)
+void gx_pon_fps(int fps) {
+    int n = fps / 60 - 1;
+    sub_por_escena = n < 0 ? 0 : n > 3 ? 3 : n;
+}
 static struct { Vert v[4]; int n; uint32_t attr, teximage, pltt; } ant[MAX_POLIS];  // la escena anterior
 static int nant;
 static int pareja[MAX_POLIS];  // para cada polígono de la escena: su pareja en la anterior, o -1
@@ -1091,10 +1097,10 @@ int video_escala(void);
 
 static void arranca_hilos(void) {
     esc = video_escala();
-    const char *fps = getenv("MKDS_FPS");
-    sub_por_escena = fps ? atoi(fps) / 60 - 1 : 0;
-    if (sub_por_escena < 0) sub_por_escena = 0;
-    if (sub_por_escena > 3) sub_por_escena = 3;
+    if (sub_por_escena < 0) {  // si el menú no lo ha puesto ya
+        const char *fps = getenv("MKDS_FPS");
+        gx_pon_fps(fps ? atoi(fps) : 60);
+    }
     AN = 256 * esc;
     AL = 192 * esc;
     ev_trabajo = CreateEventW(NULL, FALSE, FALSE, NULL);

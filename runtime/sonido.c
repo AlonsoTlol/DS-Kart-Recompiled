@@ -39,6 +39,12 @@ typedef struct {
 } Canal;
 
 static Canal canal[16];
+static volatile int volumen = 100, silencio;  // del menú (0-100)
+
+void sonido_pon_volumen(int v, int s) {
+    volumen = v < 0 ? 0 : v > 100 ? 100 : v;
+    silencio = s;
+}
 void repe_audio(const int16_t *m, int n);  // repeticion.c
 static const int adpcm_idx[8] = {-1, -1, -1, -1, 2, 4, 6, 8};
 static const uint16_t adpcm_paso[89] = {
@@ -163,8 +169,9 @@ static void mezcla(int16_t *sal, int n_muestras) {
                 der += s * pan / 128;
             }
         }
-        izq = izq * maestro / 128 / 4;
-        der = der * maestro / 128 / 4;
+        int vol = silencio ? 0 : volumen;
+        izq = izq * maestro / 128 / 4 * vol / 100;
+        der = der * maestro / 128 / 4 * vol / 100;
         if (izq > 32767) izq = 32767;
         if (izq < -32768) izq = -32768;
         if (der > 32767) der = 32767;

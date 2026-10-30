@@ -12,7 +12,7 @@ D=publicar/tmp/DS-Kart-Recompiled
 rm -rf publicar/tmp && mkdir -p $D/tools $D/runtime $D/linux
 cp Launcher.exe LICENSE faltan.txt faltan7.txt publicar/README.txt $D/
 cp tools/nds_rom.py tools/recomp.py tools/traducir_mkds.py $D/tools/
-cp runtime/*.c runtime/*.h $D/runtime/
+cp runtime/*.c runtime/*.cpp runtime/*.h $D/runtime/ && cp -r runtime/imgui $D/runtime/  # el menú (Dear ImGui)
 cp linux/preparar.sh linux/jugar.sh linux/LEEME.txt $D/linux/  # Linux (beta): sh linux/jugar.sh
 rm -f publicar/*.zip publicar/portada.mp4
 cp portada.mp4 $D/

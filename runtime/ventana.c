@@ -3,9 +3,9 @@
 //
 // Controles:  flechas = cruceta   X = A   Z = B   S = X   A = Y
 //             Q = L   W = R   Enter = Start   Retroceso = Select   F11 = pantalla completa
-//             F10 = guardar los últimos 30 segundos en vídeo (repeticiones/)
-// Mando (XInput): A B X Y como en la DS, LB/LT = L, RB/RT = R, Start, Back = Select,
-//                 cruceta o stick izquierdo
+//             F10 = guardar los últimos 30 segundos en vídeo (repeticiones/)   F1 = menú de ajustes
+// Mando (XInput): A = A, B = B, Y (arriba) = X, X (izquierda) = Y, LB/LT = L, RB/RT = R, Start,
+//                 Back = Select, cruceta o stick izquierdo; L3 + R3 = menú de ajustes
 // Mando de PS5/PS4 (leído directamente por USB o Bluetooth): X = A, círculo = B,
 //                 cuadrado = Y, triángulo = X, L1/L2 = L, R1/R2 = R, Options = Start, Create = Select
 #include <windows.h>
@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <GL/gl.h>
 #include "video.h"
+#include "menu.h"
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT 0x80E1
 #endif
@@ -183,7 +184,29 @@ void repe_frame(const uint32_t *arriba, const uint32_t *abajo);
 void repe_guarda(void);
 const char *repe_aviso(void);
 
-static int oculto;  // MKDS_OCULTO=1: sin ventana (pruebas sin molestar), solo capturas
+static int oculto;
+static volatile int pide_pc;  // el menú pide pantalla completa (1) o ventana (2): se hace en ventana_mensajes
+int ventana_pantalla_completa(void) { return pantalla_completa; }
+void ventana_pide_pantalla_completa(int si) { pide_pc = si ? 1 : 2; }
+
+static int tecla_menu(WPARAM vk) {
+    switch (vk) {
+    case VK_TAB: return MT_TAB;
+    case VK_LEFT: return MT_IZQ;
+    case VK_RIGHT: return MT_DER;
+    case VK_UP: return MT_ARRIBA;
+    case VK_DOWN: return MT_ABAJO;
+    case VK_HOME: return MT_INICIO;
+    case VK_END: return MT_FIN;
+    case VK_BACK: return MT_BORRAR;
+    case VK_DELETE: return MT_SUPR;
+    case VK_RETURN: return MT_ENTER;
+    case VK_ESCAPE: return MT_ESC;
+    case VK_CONTROL: return MT_CTRL;
+    case VK_SHIFT: return MT_SHIFT;
+    }
+    return 0;
+}  // MKDS_OCULTO=1: sin ventana (pruebas sin molestar), solo capturas
 
 static void tecla(WPARAM vk, int pulsada) {
     int bit = -1, xy = -1;
@@ -234,9 +257,19 @@ static LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CLOSE: case WM_DESTROY: ExitProcess(0);
     case WM_KEYDOWN:
+        if (wp == VK_F1) { menu_alterna(); return 0; }
+        if (menu_abierto()) { if (tecla_menu(wp)) menu_tecla(tecla_menu(wp), 1); return 0; }
         if (wp == VK_F11 || (wp == VK_ESCAPE && pantalla_completa)) { cambia_pantalla_completa(); return 0; }
         tecla(wp, 1);
         return 0;
+    case WM_CHAR:
+        if (menu_abierto() && wp >= 32) menu_caracter((unsigned)wp);
+        return 0;
+    case WM_MOUSEWHEEL:
+        menu_rueda((float)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA);
+        return 0;
+    case WM_RBUTTONDOWN: menu_boton(1, 1); return 0;
+    case WM_RBUTTONUP: menu_boton(1, 0); return 0;
     case WM_SIZE:
         EnterCriticalSection(&cs_gdi);
         calcula_destino();
@@ -247,10 +280,20 @@ static LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_F10) { repe_guarda(); return 0; }
         break;
     case WM_ERASEBKGND: return 1;
-    case WM_KEYUP: tecla(wp, 0); return 0;
-    case WM_LBUTTONDOWN: SetCapture(h); raton(lp, 1); return 0;
-    case WM_MOUSEMOVE: if (wp & MK_LBUTTON) raton(lp, 1); return 0;
-    case WM_LBUTTONUP: ReleaseCapture(); raton(lp, 0); return 0;
+    case WM_KEYUP:
+        if (tecla_menu(wp)) menu_tecla(tecla_menu(wp), 0);
+        tecla(wp, 0);  // soltar también para el juego (pudo pulsarse antes de abrir el menú)
+        return 0;
+    case WM_LBUTTONDOWN:
+        SetCapture(h);
+        if (menu_abierto()) { menu_raton((short)LOWORD(lp), (short)HIWORD(lp)); menu_boton(0, 1); }
+        else raton(lp, 1);
+        return 0;
+    case WM_MOUSEMOVE:
+        if (menu_abierto()) menu_raton((short)LOWORD(lp), (short)HIWORD(lp));
+        else if (wp & MK_LBUTTON) raton(lp, 1);
+        return 0;
+    case WM_LBUTTONUP: ReleaseCapture(); menu_boton(0, 0); raton(lp, 0); return 0;
     case WM_PAINT: {  // lo pinta hilo_pinta (aquí, en el hilo del juego, no se espera a nada)
         PAINTSTRUCT ps;
         BeginPaint(h, &ps);
@@ -397,6 +440,28 @@ static void gl_pinta(HDC dc, int i, int subir) {
         glBindTexture(GL_TEXTURE_2D, tex_cartel);
         gl_rect(x + (w - ancho) / 2, y + alto / 3, ancho, alto, 0, 0, 1, 1);
     }
+    menu_pinta(r.right, r.bottom, r.right, r.bottom);  // el menú de ajustes y el contador de FPS, si toca
+    // pruebas: MKDS_CAPTURA_VENTANA=x.bmp guarda lo que se ve en la ventana (con el menú) a los 5 s y sale
+    static const char *captura = (const char *)1;
+    static int pintadas;
+    if (captura == (const char *)1) captura = getenv("MKDS_CAPTURA_VENTANA");
+    if (captura && ++pintadas == 300) {
+        int w = r.right, hh = r.bottom;
+        uint32_t *px = malloc((size_t)w * hh * 4);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, w, hh, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);  // de abajo arriba, como un BMP normal
+        FILE *f = fopen(captura, "wb");
+        if (f && px) {
+            uint32_t tam = 54 + (uint32_t)w * hh * 4, off = 54, cab_tam = 40, planos_bits = 1 | (32 << 16);
+            uint8_t cab[54] = {'B', 'M'};
+            memcpy(cab + 2, &tam, 4); memcpy(cab + 10, &off, 4); memcpy(cab + 14, &cab_tam, 4);
+            memcpy(cab + 18, &w, 4); memcpy(cab + 22, &hh, 4); memcpy(cab + 26, &planos_bits, 4);
+            fwrite(cab, 1, 54, f);
+            fwrite(px, 4, (size_t)w * hh, f);
+            fclose(f);
+        }
+        ExitProcess(0);
+    }
     SwapBuffers(dc);  // espera al refresco del monitor
 }
 
@@ -404,6 +469,7 @@ static DWORD WINAPI hilo_pinta(LPVOID p) {
     (void)p;
     HDC dc = GetDC(ventana);
     int gl = !getenv("MKDS_GDI") && gl_inicia(dc);
+    if (gl && !menu_inicia()) fprintf(stderr, "[ventana] no se pudo preparar el menú\n");
     int subido = -1;
     int64_t ts_subido = 0;
     for (;;) {
@@ -441,8 +507,10 @@ void ventana_inicia(void) {
     RECT r = {0, 0, 256 * ESCALA, 384 * ESCALA};
     DWORD estilo = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, estilo, FALSE);
-    ventana = CreateWindowW(L"mkds", L"DS Kart Recompiled", estilo, CW_USEDEFAULT, CW_USEDEFAULT,
-                            r.right - r.left, r.bottom - r.top, NULL, NULL, wc.hInstance, NULL);
+    int fuera = getenv("MKDS_VENTANA_FUERA") != NULL;  // pruebas: la ventana fuera de la pantalla, sin molestar
+    ventana = CreateWindowExW(fuera ? WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE : 0, L"mkds", L"DS Kart Recompiled", estilo,
+                              fuera ? -6000 : CW_USEDEFAULT, fuera ? -6000 : CW_USEDEFAULT,
+                              r.right - r.left, r.bottom - r.top, NULL, NULL, wc.hInstance, NULL);
     bmi.bmiHeader.biSize = sizeof bmi.bmiHeader;
     bmi.bmiHeader.biWidth = 256;
     bmi.bmiHeader.biHeight = -384;  // de arriba abajo
@@ -459,7 +527,7 @@ void ventana_inicia(void) {
     bmi_lado_hd = bmi;
     bmi_lado_hd.bmiHeader.biWidth = 512 * e;
     bmi_lado_hd.bmiHeader.biHeight = -192 * e;
-    ShowWindow(ventana, SW_SHOW);
+    ShowWindow(ventana, fuera ? SW_SHOWNOACTIVATE : SW_SHOW);
     if (getenv("MKDS_PANTALLA_COMPLETA") && atoi(getenv("MKDS_PANTALLA_COMPLETA"))) cambia_pantalla_completa();
     CreateThread(NULL, 0, hilo_mando_ps, NULL, 0, NULL);
     HANDLE h = CreateThread(NULL, 0, hilo_pinta, NULL, 0, NULL);
@@ -572,6 +640,7 @@ void ventana_muestra_en(const uint32_t *arriba, const uint32_t *abajo, int64_t t
 
 // ---- mando de PlayStation (DualSense / DualShock 4) por HID --------------------
 static volatile uint16_t ps_in = 0x3FF, ps_xy = 3;
+static volatile int ps_combo, ps_producto;  // L3 + R3 pulsados; qué mando de PS está conectado
 
 static HANDLE abre_mando_ps(void) {
     GUID guid;
@@ -627,6 +696,7 @@ static void interpreta_ps(uint8_t lx, uint8_t ly, uint8_t b0, uint8_t b1) {
     if (b0 & 0x10) xy &= ~2;          // cuadrado -> Y
     ps_in = in;
     ps_xy = xy;
+    ps_combo = (b1 & 0xC0) == 0xC0;   // L3 + R3: menú de ajustes
 }
 
 static DWORD WINAPI hilo_mando_ps(LPVOID p) {
@@ -634,6 +704,8 @@ static DWORD WINAPI hilo_mando_ps(LPVOID p) {
     for (;;) {
         HANDLE h = abre_mando_ps();
         if (!h) { Sleep(2000); continue; }
+        HIDD_ATTRIBUTES at = {sizeof at};
+        ps_producto = HidD_GetAttributes(h, &at) ? at.ProductID : 1;
         uint8_t buf[128];
         DWORD n;
         while (ReadFile(h, buf, sizeof buf, &n, NULL)) {
@@ -650,13 +722,15 @@ static DWORD WINAPI hilo_mando_ps(LPVOID p) {
         CloseHandle(h);  // desconectado: esperar a que vuelva
         ps_in = 0x3FF;
         ps_xy = 3;
+        ps_combo = ps_producto = 0;
     }
 }
 
 // Mando: se suma a lo que se pulse en el teclado
-static void lee_mando(uint16_t *in, uint16_t *xy) {
+static void lee_mando(uint16_t *in, uint16_t *xy, int *combo) {
     *in = 0x3FF;
     *xy = 3;
+    *combo = 0;
     XINPUT_STATE st;
     for (DWORD i = 0; i < 4; i++) {
         if (XInputGetState(i, &st) != ERROR_SUCCESS) continue;
@@ -673,23 +747,52 @@ static void lee_mando(uint16_t *in, uint16_t *xy) {
         };
         for (int k = 0; k < 10; k++)
             if (m[k].pulsado) *in &= (uint16_t)~(1u << m[k].bit);
-        if (b & XINPUT_GAMEPAD_X) *xy &= ~1;
-        if (b & XINPUT_GAMEPAD_Y) *xy &= ~2;
+        if (b & XINPUT_GAMEPAD_Y) *xy &= ~1;  // por posición, como la DS (y como los de PlayStation): arriba = X
+        if (b & XINPUT_GAMEPAD_X) *xy &= ~2;  // izquierda = Y
+        if ((b & XINPUT_GAMEPAD_LEFT_THUMB) && (b & XINPUT_GAMEPAD_RIGHT_THUMB)) *combo = 1;
     }
 }
 
 // Botones que pulsa el guion de pruebas (MKDS_GUION, en ds.c): se suman al teclado y al mando
 volatile uint16_t g_guion_in = 0x3FF, g_guion_xy = 3;
 
+// los mandos conectados (para el menú)
+int ventana_mandos(char nombres[][64], int max) {
+    int n = 0;
+    XINPUT_STATE st;
+    for (DWORD i = 0; i < 4 && n < max; i++)
+        if (XInputGetState(i, &st) == ERROR_SUCCESS) snprintf(nombres[n++], 64, "Xbox / XInput %lu", i + 1);
+    int p = ps_producto;
+    if (p && n < max)
+        snprintf(nombres[n++], 64, "%s", p == 0x05C4 || p == 0x09CC ? "DualShock 4" : p == 0x0DF2 ? "DualSense Edge" : "DualSense");
+    return n;
+}
+
 void ventana_mensajes(void) {
     uint16_t mando_in = 0x3FF, mando_xy = 3;
+    int combo = 0;
     if (!oculto) {
         MSG m;
         while (PeekMessageW(&m, NULL, 0, 0, PM_REMOVE)) {
             TranslateMessage(&m);
             DispatchMessageW(&m);
         }
-        lee_mando(&mando_in, &mando_xy);
+        lee_mando(&mando_in, &mando_xy, &combo);
+    }
+    static int combo_antes;  // L3 + R3: abre o cierra el menú
+    combo |= ps_combo;
+    if (combo && !combo_antes) menu_alterna();
+    combo_antes = combo;
+    if (pide_pc) {
+        if ((pide_pc == 1) != (pantalla_completa != 0)) cambia_pantalla_completa();
+        pide_pc = 0;
+    }
+    if (menu_abierto()) {  // el menú se queda los botones; el juego no ve nada pulsado
+        menu_mando(mando_in & ps_in);
+        g_keyinput = g_guion_in;
+        g_keyxy = g_guion_xy;
+        g_lapiz = 0;
+        return;
     }
     g_keyinput = teclado_in & mando_in & ps_in & g_guion_in;
     g_keyxy = (uint16_t)(teclado_xy & mando_xy & ps_xy & g_guion_xy);
@@ -735,12 +838,14 @@ void ventana_guarda_bmp_de(const char *ruta, const uint32_t *px, int e) {
 
 // Contador de FPS en el título de la ventana
 void ventana_titulo_fps(int fps, int fps3d) {
+    int pantalla = (int)InterlockedExchange(&enseñadas, 0);
+    menu_pon_fps(fps, fps3d, pantalla);
     if (oculto || !ventana) return;
     wchar_t t[128];
     const char *av = repe_aviso();
     wchar_t avw[128];
     if (av) MultiByteToWideChar(CP_UTF8, 0, av, -1, avw, 128);
     if (av) swprintf(t, 128, L"DS Kart Recompiled  -  %ls", avw);
-    else swprintf(t, 128, L"DS Kart Recompiled  -  %d FPS  (3D: %d)  pantalla: %d", fps, fps3d, (int)InterlockedExchange(&enseñadas, 0));
+    else swprintf(t, 128, L"DS Kart Recompiled  -  %d FPS  (3D: %d)  pantalla: %d", fps, fps3d, pantalla);
     SetWindowTextW(ventana, t);
 }

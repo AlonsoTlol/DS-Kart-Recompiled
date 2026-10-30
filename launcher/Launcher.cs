@@ -439,6 +439,21 @@ partial class Launcher {
         Busca<TextBlock>("ChipNombre").Text = n.Length > 0 ? n : T("Sin nombre");
     }
 
+    // El juego tiene su propio menú de ajustes (F1) que también escribe ajustes.ini: al cerrarlo, se vuelve a
+    // leer para que el launcher enseñe lo mismo y no lo pise al guardar
+    static void RecargaAjustes() {
+        LeeAjustes();
+        for (int i = 1; i <= 4; i++) Busca<ToggleButton>("Esc" + i).IsChecked = ajustes["ESCALA"] == i.ToString();
+        for (int i = 1; i <= 5; i++) Busca<ToggleButton>("Idi" + i).IsChecked = ajustes["IDIOMA"] == i.ToString();
+        foreach (string f in new[] { "60", "120", "180", "240" }) Busca<ToggleButton>("Fps" + f).IsChecked = ajustes["FPS"] == f;
+        Busca<ToggleButton>("PantallaCompleta").IsChecked = ajustes["PANTALLA_COMPLETA"] == "1";
+        string nombre = ajustes["NOMBRE"];
+        Busca<TextBox>("Nombre").Text = nombre;
+        ajustes["NOMBRE"] = nombre;
+        RellenaMicros();
+        Resumen();
+    }
+
     static void Juega() {
         GuardaAjustes();
         // el nombre es obligatorio (lo necesitará el juego en línea): sin él, a Ajustes con el cursor en la casilla
@@ -467,12 +482,14 @@ partial class Launcher {
         try { p = Process.Start(psi); }
         catch (Exception ex) { Estado(T("No se pudo abrir el juego: ") + ex.Message, true); return; }
         Estado(T("Jugando… el launcher vuelve al cerrar el juego"), false);
-        ventana.WindowState = WindowState.Minimized;
+        ventana.Hide();  // se quita de en medio mientras se juega; vuelve al cerrar el juego
         p.EnableRaisingEvents = true;
         p.Exited += delegate {
             ventana.Dispatcher.Invoke(new Action(delegate {
+                ventana.Show();
                 ventana.WindowState = WindowState.Normal;
                 ventana.Activate();
+                RecargaAjustes();
                 if (p.ExitCode == 0) Estado(T("Listo para jugar"), false);
                 else Estado(string.Format(T("El juego se cerró con un error (código {0})"), p.ExitCode), true);
             }));
