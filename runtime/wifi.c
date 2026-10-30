@@ -532,6 +532,8 @@ void wifi_ds_empieza(uint32_t info) {
     if (dsh.adelanto > 12) dsh.adelanto = 12;
 }
 
+static uint64_t espera_desde;  // desde cuándo espera el conjunto que toca (0 = no espera)
+
 // WM_StepDataSharing (02144C6C): devuelve lo que devolvería el original (0 = conjunto leído, 5 = aún no) o -1
 // para dejar que lo haga el original.
 int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe) {
@@ -564,8 +566,22 @@ int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe) {
     int k = (int)(dsh.leidos % DS_PASOS);
     if (dsh.paso[k] != dsh.leidos + 1 || !dsh.completo[k]) {
         if (dsh.leidos > 0) dsh.atascos++;
+        static uint64_t avisado;  // MKDS_WIFI_LOG: si se queda esperando más de 1 s, qué falta
+        if (!espera_desde) espera_desde = ms_ahora;
+        if (traza && ms_ahora - espera_desde > 1000 && ms_ahora - avisado > 1000) {
+            avisado = ms_ahora;
+            fprintf(stderr, "[wifi] carrera ATASCADA en el paso %u: hechos %u, cierre %u, hueco paso %u recibido %04X completo %d, padre_tiene %u",
+                    dsh.leidos, dsh.hechos, dsh.cierre, dsh.paso[k] - 1, dsh.recibido[k], dsh.completo[k], dsh.padre_tiene);
+            if (dsh.aid == 0) {
+                fprintf(stderr, " esperados %04X;", (unsigned)(dsh.bitmap & (lee16(estado + ST_LISTOS) | 1)));
+                for (int i = 1; i < 16; i++)
+                    if (invitados[i].usado) fprintf(stderr, " [%d lee %u hecho %u]", i, dsh.hijo_lee[i], dsh.hijo_hecho[i]);
+            }
+            fprintf(stderr, "\n");
+        }
         return 5;
     }
+    espera_desde = 0;
     uint8_t *p = g_main + (recibe & 0x3FFFFF);
     memset(p, 0, 0x200);
     pon16(recibe, dsh.bitmap);
@@ -608,7 +624,7 @@ static void red_atiende(void) {
     for (int k = 0; k < 2; k++) {
         if (ss[k] == INVALID_SOCKET) continue;
         for (int vueltas = 0; vueltas < 32; vueltas++) {
-            uint8_t b[512];
+            static uint8_t b[2048];  // los reenvíos del DataSharing pueden pasar de 512 bytes (con 8 jugadores, ~820)
             struct sockaddr_in de;
             int l = sizeof de;
             int n = recvfrom(ss[k], (char *)b, sizeof b, 0, (struct sockaddr *)&de, &l);
