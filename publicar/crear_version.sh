@@ -16,6 +16,6 @@ cp runtime/*.c runtime/*.cpp runtime/*.h $D/runtime/ && cp -r runtime/imgui $D/r
 cp linux/preparar.sh linux/jugar.sh linux/LEEME.txt $D/linux/  # Linux (beta): sh linux/jugar.sh
 rm -f publicar/*.zip publicar/portada.mp4
 cp portada.mp4 $D/
-(cd publicar/tmp && powershell -NoProfile -Command "Compress-Archive -Path DS-Kart-Recompiled -DestinationPath ../DS-Kart-Recompiled-v$V.zip")
+/c/Users/Administrator/AppData/Local/Programs/Python/Python312/python.exe publicar/zip_version.py publicar/tmp/DS-Kart-Recompiled publicar/DS-Kart-Recompiled-v$V.zip
 rm -rf publicar/tmp
 ls -l publicar/*.zip
