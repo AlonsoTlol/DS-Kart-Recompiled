@@ -141,6 +141,9 @@ def arm9(ext, info):
         # truco TODO_DESBLOQUEADO (lo mismo que los códigos Action Replay de desbloqueo)
         (0x02056DEC, True): ("truco_desbloqueado", False, "si"),   # ¿está desbloqueado X?
         (0x02056DAC, True): ("truco_cilindradas", False, "si"),    # cilindrada más alta (4 = espejo)
+        # multijugador: el intercambio de cada fotograma en carrera, con adelanto (runtime/wifi.c)
+        (0x021450EC, False): ("gancho_ds_empieza", False, "si"),   # WM_StartDataSharing
+        (0x02144C6C, False): ("gancho_ds_paso", False, "si"),      # WM_StepDataSharing
     }
     entries = [(info["arm9_entry"], False)]
     parches = {0x021189D6: ("g_trucos & 1", "R[0] = 1;")}  # estado de cada copa: desbloqueada

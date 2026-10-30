@@ -43,6 +43,22 @@ int truco_jefe_mision(Cpu *c) {
     return 1;
 }
 
+// Carreras en multijugador: el intercambio de cada fotograma lo hace wifi.c con adelanto (ver allí)
+void wifi_ds_empieza(uint32_t info);
+int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe);
+
+int gancho_ds_empieza(Cpu *c) {  // WM_StartDataSharing: se anota y sigue el original
+    wifi_ds_empieza(c->r[0]);
+    return 0;
+}
+
+int gancho_ds_paso(Cpu *c) {  // WM_StepDataSharing
+    int r = wifi_ds_paso(c->r[0], c->r[1], c->r[2]);
+    if (r < 0) return 0;
+    c->r[0] = (uint32_t)r;
+    return 1;
+}
+
 static void volcado(Cpu *c) {
     fprintf(stderr, "  %s en la función %08X (%s)\n", c->id ? "ARM7" : "ARM9", c->func & ~1u,
             (c->func & 1) ? "Thumb" : "ARM");

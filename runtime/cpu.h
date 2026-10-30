@@ -64,6 +64,8 @@ int truco_desbloqueado(Cpu *c);
 int truco_cilindradas(Cpu *c);
 int truco_niveles_mision(Cpu *c);
 int truco_jefe_mision(Cpu *c);
+int gancho_ds_empieza(Cpu *c);
+int gancho_ds_paso(Cpu *c);
 void **hle_ctx_buf(Cpu *c, uint32_t ctx);
 
 // ---- memoria ---------------------------------------------------------------

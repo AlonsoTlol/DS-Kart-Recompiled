@@ -26,7 +26,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 partial class Launcher {
-    const string VERSION_NUM = "0.1.1";
+    const string VERSION_NUM = "0.1.2";
     const string REPO = "AlonsoTlol/DS-Kart-Recompiled";
 
     const string URL_PYTHON = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";
@@ -39,7 +39,7 @@ partial class Launcher {
 
     static readonly string[] RUNTIME = { "cpu", "memoria", "bios", "hilos", "ds", "video", "gpu3d", "ventana", "sonido",
                                          "repeticion", "microfono", "wifi", "main_mkds" };
-    const string LIBRERIAS = "-lwinmm -lgdi32 -lopengl32 -luser32 -lxinput -lhid -lsetupapi -lws2_32 -liphlpapi -lole32";
+    const string LIBRERIAS = "-lwinmm -lgdi32 -lopengl32 -luser32 -lxinput1_4 -lhid -lsetupapi -lws2_32 -liphlpapi -lole32";
 
     static volatile bool cancelado;
     static readonly List<Process> enMarcha = new List<Process>();
@@ -81,6 +81,12 @@ partial class Launcher {
         return Huella(l);
     }
 
+    // con qué se enlaza (0.1.2: -lxinput enlazaba xinput1_3.dll, que no viene con Windows)
+    static string HuellaEnlace() {
+        using (var sha = SHA256.Create())
+            return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(LIBRERIAS))).Replace("-", "").Substring(0, 16);
+    }
+
     static string HuellaRuntime(string nombre) { return Huella(new[] { Ruta("runtime", nombre + ".c") }); }
 
     static Dictionary<string, string> LeePreparado() {
@@ -102,6 +108,7 @@ partial class Launcher {
         if (p.Count == 0) return false;
         string h;
         if (!p.TryGetValue("traduccion", out h) || h != HuellaTraduccion()) return true;
+        if (!p.TryGetValue("enlace", out h) || h != HuellaEnlace()) return true;  // otras librerías: volver a enlazar
         foreach (string n in RUNTIME)
             if (!p.TryGetValue(n, out h) || h != HuellaRuntime(n)) return true;
         return false;
@@ -158,6 +165,7 @@ partial class Launcher {
             var ahora = new Dictionary<string, string>();
             string huella = HuellaTraduccion();
             ahora["traduccion"] = huella;
+            ahora["enlace"] = HuellaEnlace();
             string h;
             bool traducir = !antes.TryGetValue("traduccion", out h) || h != huella || !Directory.Exists(Ruta("build", "obj", "mkds"));
             if (traducir) {
@@ -379,7 +387,9 @@ partial class Launcher {
     }
 
     // ---- actualizar -------------------------------------------------------------------------------------
-    static string versionNueva, zipNueva;
+    static volatile string versionNueva, zipNueva;
+    // se pone al acabar la comprobación de al abrir (haya ido bien o no): JUGAR la espera un poco
+    static readonly ManualResetEvent buscado = new ManualResetEvent(false);
 
     // Al abrir, sin molestar: si hay una versión más nueva en GitHub, sale el botón de actualizar
     static void BuscaActualizacion(bool avisarSiNoHay) {
@@ -399,10 +409,11 @@ partial class Launcher {
                         if (zip == null) zip = a.Groups[1].Value;
                 }
             } catch (Exception ex) { error = ex.Message; }
+            bool hay = tag != null && zip != null && new Version(tag) > new Version(VERSION_NUM);
+            if (hay) { versionNueva = tag; zipNueva = zip; }
+            buscado.Set();
             ventana.Dispatcher.BeginInvoke(new Action(delegate {
-                if (tag != null && zip != null && new Version(tag) > new Version(VERSION_NUM)) {
-                    versionNueva = tag;
-                    zipNueva = zip;
+                if (hay) {
                     var b = Busca<Button>("Actualizar");
                     b.Visibility = Visibility.Visible;
                     ((TextBlock)b.Content).Text = string.Format(T("Actualizar a la {0}"), tag);
@@ -417,9 +428,23 @@ partial class Launcher {
         hilo.Start();
     }
 
-    static void Actualiza() {
+    // Para jugar hay que tener la última versión (todos con el mismo juego, sobre todo en multijugador). Sin
+    // internet o si GitHub no contesta se deja jugar. Devuelve true si se puede jugar ya.
+    static bool ActualizadoParaJugar() {
+        buscado.WaitOne(5000);  // la comprobación de al abrir, si aún no ha acabado
+        if (zipNueva == null) return true;
+        if (MessageBox.Show(string.Format(T("Hay una versión nueva ({0}). Hay que actualizar para poder jugar: se descarga y el launcher se reinicia. Tu ROM, tus ajustes y tu partida no se tocan."), versionNueva),
+                            TITULO, MessageBoxButton.OKCancel, MessageBoxImage.Information) == MessageBoxResult.OK)
+            Actualiza(false);
+        else Estado(T("Actualiza para poder jugar"), true);
+        return false;
+    }
+
+    static void Actualiza() { Actualiza(true); }
+
+    static void Actualiza(bool preguntar) {
         if (zipNueva == null) return;
-        if (MessageBox.Show(string.Format(T("Se descargará la versión {0} y el launcher se reiniciará. Tu ROM, tus ajustes y tu partida no se tocan."), versionNueva),
+        if (preguntar && MessageBox.Show(string.Format(T("Se descargará la versión {0} y el launcher se reiniciará. Tu ROM, tus ajustes y tu partida no se tocan."), versionNueva),
                             TITULO, MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK) return;
         cancelado = false;
         EnseñaPreparando(true, string.Format(T("Actualizando a la {0}"), versionNueva));

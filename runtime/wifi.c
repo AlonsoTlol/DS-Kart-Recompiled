@@ -231,8 +231,33 @@ static int cabecera(uint8_t *b, int tipo) {
     return 14;
 }
 
+// MKDS_LOCAL_RETRASO=ms: retrasa lo que se envía (para probar en un solo PC cómo va con la latencia de internet)
+static struct { uint64_t cuando; struct sockaddr_in d; int n; uint8_t b[600]; } retrasados[64];
+static int retraso_ms = -1;
+
 static void envia(const struct sockaddr_in *d, const uint8_t *b, int n) {
-    if (propio != INVALID_SOCKET) sendto(propio, (const char *)b, n, 0, (const struct sockaddr *)d, sizeof *d);
+    if (propio == INVALID_SOCKET) return;
+    if (n > 600) { sendto(propio, (const char *)b, n, 0, (const struct sockaddr *)d, sizeof *d); return; }
+    if (retraso_ms < 0) retraso_ms = getenv("MKDS_LOCAL_RETRASO") ? atoi(getenv("MKDS_LOCAL_RETRASO")) : 0;
+    if (retraso_ms > 0 && n <= 600)
+        for (int i = 0; i < 64; i++)
+            if (!retrasados[i].n) {
+                retrasados[i].cuando = ms_ahora + (uint64_t)retraso_ms;
+                retrasados[i].d = *d;
+                retrasados[i].n = n;
+                memcpy(retrasados[i].b, b, (size_t)n);
+                return;
+            }
+    sendto(propio, (const char *)b, n, 0, (const struct sockaddr *)d, sizeof *d);
+}
+
+static void envia_retrasados(void) {
+    for (int i = 0; i < 64; i++)
+        if (retrasados[i].n && ms_ahora >= retrasados[i].cuando) {
+            sendto(propio, (const char *)retrasados[i].b, retrasados[i].n, 0, (const struct sockaddr *)&retrasados[i].d,
+                   sizeof retrasados[i].d);
+            retrasados[i].n = 0;
+        }
 }
 
 // A todas las redes del PC (la de casa, la de Radmin 26.x.x.x...) por difusión, y a LOCAL_IP si se puso
@@ -291,8 +316,243 @@ static void anuncia(void) {
 static void responde_simple(int api, int error);
 static void pon_estado(int s);
 
+// ---- intercambio de cada fotograma en carrera (DataSharing) con adelanto --------------------------------
+// En carrera el juego usa el DataSharing del SDK (puerto 12): cada fotograma cada consola pone sus 8 bytes
+// (los botones) con WM_StepDataSharing (02144C6C) y recibe el conjunto con los de todas para ese paso; todas
+// simulan la carrera entera con los mismos conjuntos. El del SDK hace un viaje de ida y vuelta por paso: en una
+// DS de verdad tarda microsegundos, pero por internet (Radmin) con 15 ms de ida el juego iba al 67 % (cámara
+// lenta) y con 20 ms ni salía del vestíbulo.
+// Aquí se sustituye: cada consola pone sus datos con 'adelanto' pasos de ventaja (los del paso t los manda
+// cuando el juego va por el t - adelanto), así que llegan antes de que hagan falta. El anfitrión junta los de
+// todos, cierra cada conjunto una sola vez y se lo manda a los invitados: todos leen exactamente lo mismo.
+// UDP puede perder paquetes: cada mensaje lleva todo lo que el otro aún no ha confirmado. Si aun así hay que
+// esperar a menudo, el adelanto sube solo (cada paso de adelanto son 16,7 ms más de retraso en los mandos).
+//   6 DS_HIJO (invitado → anfitrión): sesión, siguiente conjunto que necesita, primer paso, cuántos, sus datos.
+//   7 DS_PADRE (anfitrión → invitado): sesión, siguiente paso de sus datos que le falta, primer conjunto,
+//     cuántos y cada conjunto (de quién trae datos + los datos de cada jugador del aidBitmap).
+enum { DS_HIJO = 6, DS_PADRE = 7 };
+#define DS_PASOS 64
+#define DS_MAX 64
+static struct {
+    uint32_t info;              // WMDataSharingInfo del juego (0 = sin carrera)
+    int aid, largo, iniciado;
+    uint16_t bitmap;            // aidBitmap del juego
+    uint32_t leidos, hechos;    // conjuntos que ha leído el juego; pasos con mis datos ya puestos
+    uint32_t cierre;            // anfitrión: siguiente conjunto por cerrar
+    int adelanto, atascos, buenos;
+    uint32_t sesion;
+    uint32_t paso[DS_PASOS];    // qué paso guarda cada hueco del anillo (+1; 0 = vacío)
+    uint16_t recibido[DS_PASOS], cerrado_con[DS_PASOS];
+    uint8_t completo[DS_PASOS];
+    uint8_t datos[DS_PASOS][16][DS_MAX];
+    uint32_t hijo_lee[16], hijo_hecho[16];  // anfitrión: lo que necesita cada invitado y lo que ya tengo suyo
+    uint32_t padre_tiene;                   // invitado: siguiente paso mío que le falta al anfitrión
+} dsh;
+
+static int ds_hueco(uint32_t t) {
+    int k = (int)(t % DS_PASOS);
+    if (dsh.paso[k] != t + 1) {
+        dsh.paso[k] = t + 1;
+        dsh.recibido[k] = dsh.cerrado_con[k] = 0;
+        dsh.completo[k] = 0;
+    }
+    return k;
+}
+
+// lo más antiguo que alguien puede necesitar todavía (lo de antes se puede pisar)
+static uint32_t ds_base(void) {
+    uint32_t b = dsh.leidos;
+    if (dsh.aid == 0)
+        for (int i = 1; i < 16; i++)
+            if (invitados[i].usado && dsh.hijo_lee[i] < b) b = dsh.hijo_lee[i];
+    return b;
+}
+
+static int ds_en_ventana(uint32_t t) { return t >= ds_base() && t < dsh.leidos + DS_PASOS - 8; }
+
+static void ds_envia_hijo(int i);
+
+// anfitrión: cierra los conjuntos que ya tienen los datos de todos y se los manda a los invitados
+static void ds_cierra(void) {
+    uint16_t esperados = (uint16_t)(dsh.bitmap & (lee16(estado + ST_LISTOS) | 1));
+    int nuevos = 0;
+    for (;;) {
+        uint32_t t = dsh.cierre;
+        int k = (int)(t % DS_PASOS);
+        if (dsh.paso[k] != t + 1 || (dsh.recibido[k] & esperados) != esperados) break;
+        dsh.completo[k] = 1;
+        dsh.cerrado_con[k] = (uint16_t)(dsh.recibido[k] & dsh.bitmap);
+        dsh.cierre++;
+        nuevos = 1;
+    }
+    if (nuevos)
+        for (int i = 1; i < 16; i++) if (invitados[i].usado) ds_envia_hijo(i);
+}
+
+static void ds_envia_hijo(int i) {
+    static uint8_t b[1400];
+    int n = cabecera(b, DS_PADRE);
+    uint32_t primero = dsh.hijo_lee[i];
+    if (dsh.cierre > 12 && primero < dsh.cierre - 12) primero = dsh.cierre - 12;
+    uint8_t cuantos = (uint8_t)(dsh.cierre > primero ? dsh.cierre - primero : 0);
+    memcpy(b + n, &dsh.sesion, 4); memcpy(b + n + 4, &dsh.hijo_hecho[i], 4); memcpy(b + n + 8, &primero, 4);
+    b[n + 12] = cuantos;
+    n += 13;
+    for (uint32_t t = primero; t < primero + cuantos; t++) {
+        int k = (int)(t % DS_PASOS);
+        memcpy(b + n, &dsh.cerrado_con[k], 2);
+        n += 2;
+        for (int a = 0; a < 16; a++)
+            if (dsh.bitmap & (1u << a)) { memcpy(b + n, dsh.datos[k][a], (size_t)dsh.largo); n += dsh.largo; }
+    }
+    envia(&invitados[i].dir, b, n);
+}
+
+static void ds_envia_padre(void) {
+    uint8_t b[600];
+    int n = cabecera(b, DS_HIJO);
+    uint32_t primero = dsh.padre_tiene;
+    if (dsh.hechos > 16 && primero < dsh.hechos - 16) primero = dsh.hechos - 16;
+    uint8_t cuantos = (uint8_t)(dsh.hechos > primero ? dsh.hechos - primero : 0);
+    memcpy(b + n, &dsh.sesion, 4); memcpy(b + n + 4, &dsh.leidos, 4); memcpy(b + n + 8, &primero, 4);
+    b[n + 12] = cuantos;
+    n += 13;
+    for (uint32_t t = primero; t < primero + cuantos; t++) {
+        memcpy(b + n, dsh.datos[t % DS_PASOS][dsh.aid], (size_t)dsh.largo);
+        n += dsh.largo;
+    }
+    envia(&mi_anfitrion, b, n);
+}
+
+// del invitado (anfitrión)
+static void ds_de_hijo(const uint8_t *b, int n, int aid) {
+    if (!dsh.iniciado || dsh.aid != 0 || n < 14 + 13) return;
+    uint32_t ses, lee, primero;
+    memcpy(&ses, b + 14, 4); memcpy(&lee, b + 18, 4); memcpy(&primero, b + 22, 4);
+    int cuantos = b[26];
+    if (ses != dsh.sesion && ses != 0) return;  // de una carrera anterior
+    if (14 + 13 + cuantos * dsh.largo > n) return;
+    if (lee > dsh.hijo_lee[aid] && lee <= dsh.cierre) dsh.hijo_lee[aid] = lee;
+    for (int j = 0; j < cuantos; j++) {
+        uint32_t t = primero + (uint32_t)j;
+        if (!ds_en_ventana(t)) continue;
+        int k = ds_hueco(t);
+        if (dsh.completo[k]) continue;
+        memcpy(dsh.datos[k][aid], b + 27 + j * dsh.largo, (size_t)dsh.largo);
+        dsh.recibido[k] |= (uint16_t)(1u << aid);
+    }
+    for (;;) {  // hasta dónde tengo seguidos sus datos
+        uint32_t t = dsh.hijo_hecho[aid];
+        int k = (int)(t % DS_PASOS);
+        if (dsh.paso[k] != t + 1 || !(dsh.recibido[k] & (1u << aid))) break;
+        dsh.hijo_hecho[aid]++;
+    }
+    ds_cierra();
+}
+
+// del anfitrión (invitado)
+static void ds_de_padre(const uint8_t *b, int n) {
+    if (!dsh.iniciado || dsh.aid == 0 || n < 14 + 13) return;
+    uint32_t ses, tiene, primero;
+    memcpy(&ses, b + 14, 4); memcpy(&tiene, b + 18, 4); memcpy(&primero, b + 22, 4);
+    int cuantos = b[26];
+    if (!dsh.sesion) {
+        if (primero >= DS_PASOS) return;  // de la carrera anterior: aún no ha empezado esta
+        dsh.sesion = ses;
+    }
+    if (ses != dsh.sesion) return;
+    int est = 0;
+    for (int a = 0; a < 16; a++) if (dsh.bitmap & (1u << a)) est++;
+    int tam = 2 + est * dsh.largo;
+    if (14 + 13 + cuantos * tam > n) return;
+    if (tiene > dsh.padre_tiene && tiene <= dsh.hechos) dsh.padre_tiene = tiene;
+    for (int j = 0; j < cuantos; j++) {
+        uint32_t t = primero + (uint32_t)j;
+        if (t < dsh.leidos || !ds_en_ventana(t)) continue;
+        int k = ds_hueco(t);
+        if (dsh.completo[k]) continue;
+        const uint8_t *c = b + 27 + j * tam;
+        memcpy(&dsh.cerrado_con[k], c, 2);
+        c += 2;
+        for (int a = 0; a < 16; a++)
+            if (dsh.bitmap & (1u << a)) { memcpy(dsh.datos[k][a], c, (size_t)dsh.largo); c += dsh.largo; }
+        dsh.recibido[k] = dsh.cerrado_con[k];
+        dsh.completo[k] = 1;
+    }
+}
+
+// WM_StartDataSharing (021450EC): empieza otra carrera. El original sigue (inicializa el WMDataSharingInfo).
+void wifi_ds_empieza(uint32_t info) {
+    static int desactivado = -1;
+    if (desactivado < 0) desactivado = getenv("MKDS_DS_ORIGINAL") != NULL;
+    memset(&dsh, 0, sizeof dsh);
+    if (desactivado) return;
+    dsh.info = info;
+    const char *a = getenv("MKDS_LOCAL_ADELANTO");
+    dsh.adelanto = a && atoi(a) > 0 ? atoi(a) : 2;
+    if (dsh.adelanto > 12) dsh.adelanto = 12;
+}
+
+// WM_StepDataSharing (02144C6C): devuelve lo que devolvería el original (0 = conjunto leído, 5 = aún no) o -1
+// para dejar que lo haga el original.
+int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe) {
+    if (!dsh.info || info != dsh.info || !estado) return -1;
+    if (!dsh.iniciado) {  // los campos los ha puesto ya el WM_StartDataSharing original
+        dsh.bitmap = lee16(info + 0x80E);
+        dsh.largo = lee16(info + 0x810);
+        dsh.aid = lee16(estado + ST_AID);
+        if (dsh.largo <= 0 || dsh.largo > DS_MAX || dsh.aid > 15) { dsh.info = 0; return -1; }
+        if (dsh.aid == 0) {
+            LARGE_INTEGER t;
+            QueryPerformanceCounter(&t);
+            dsh.sesion = (uint32_t)t.QuadPart | 1;
+        }
+        dsh.iniciado = 1;
+        if (traza) fprintf(stderr, "[wifi] carrera: DataSharing con adelanto %d (aid %d, %d bytes, jugadores %04X)\n",
+                           dsh.adelanto, dsh.aid, dsh.largo, dsh.bitmap);
+    }
+    // mis datos para el siguiente paso, con 'adelanto' de ventaja (uno por llamada: el juego no avanza sin leer)
+    if (dsh.hechos <= dsh.leidos + (uint32_t)dsh.adelanto) {
+        int k = ds_hueco(dsh.hechos);
+        memcpy(dsh.datos[k][dsh.aid], g_main + (envio & 0x3FFFFF), (size_t)dsh.largo);
+        dsh.recibido[k] |= (uint16_t)(1u << dsh.aid);
+        dsh.hechos++;
+    }
+    if (dsh.aid == 0) {
+        ds_cierra();
+        for (int i = 1; i < 16; i++) if (invitados[i].usado) ds_envia_hijo(i);  // reenvía lo no confirmado
+    } else ds_envia_padre();
+    int k = (int)(dsh.leidos % DS_PASOS);
+    if (dsh.paso[k] != dsh.leidos + 1 || !dsh.completo[k]) {
+        if (dsh.leidos > 0) dsh.atascos++;
+        return 5;
+    }
+    uint8_t *p = g_main + (recibe & 0x3FFFFF);
+    memset(p, 0, 0x200);
+    pon16(recibe, dsh.bitmap);
+    pon16(recibe + 2, dsh.cerrado_con[k]);
+    int idx = 0;
+    for (int a = 0; a < 16; a++)
+        if (dsh.bitmap & (1u << a)) {
+            if (dsh.cerrado_con[k] & (1u << a)) memcpy(p + 4 + idx * dsh.largo, dsh.datos[k][a], (size_t)dsh.largo);
+            idx++;
+        }
+    pon16(info + 0x81A, (uint16_t)dsh.leidos);  // currentSeqNum
+    dsh.leidos++;
+    // si hay que esperar a menudo (más de 4 veces cada 2 s), un paso más de adelanto
+    if (++dsh.buenos >= 120) {
+        if (dsh.atascos > 4 && dsh.adelanto < 12) {
+            dsh.adelanto++;
+            if (traza) fprintf(stderr, "[wifi] carrera: adelanto %d (%d esperas)\n", dsh.adelanto, dsh.atascos);
+        }
+        dsh.buenos = dsh.atascos = 0;
+    }
+    return 0;
+}
+
 static void red_atiende(void) {
     if (!red_lista) return;
+    if (retraso_ms > 0) envia_retrasados();
     static uint64_t ultimo_anuncio;
     int st = estado ? lee16(estado) : 0;
     if ((st == PARENT || st == MP_PARENT) && param_padre && ms_ahora - ultimo_anuncio >= 300) {
@@ -404,6 +664,13 @@ static void red_atiende(void) {
                 cola_fin = (cola_fin + 1) % 32;
                 break;
             }
+            case DS_HIJO:
+                for (int i = 1; i < 16; i++)
+                    if (invitados[i].usado && !memcmp(invitados[i].mac, mac, 6)) ds_de_hijo(b, n, i);
+                break;
+            case DS_PADRE:
+                ds_de_padre(b, n);
+                break;
             case ADIOS:
                 for (int i = 1; i < 16; i++)
                     if (invitados[i].usado && !memcmp(invitados[i].mac, mac, 6)) {

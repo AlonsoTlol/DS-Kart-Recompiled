@@ -241,6 +241,12 @@ static class Textos {
           "À la fin, le launcher se rouvre. Ce qui a changé sera préparé la prochaine fois que tu joues.",
           "Danach öffnet sich der Launcher neu. Was sich geändert hat, wird beim nächsten Spielen vorbereitet.",
           "Al termine il launcher si riapre. Ciò che è cambiato verrà preparato la prossima volta che giochi.");
+        A("Hay una versión nueva ({0}). Hay que actualizar para poder jugar: se descarga y el launcher se reinicia. Tu ROM, tus ajustes y tu partida no se tocan.",
+          "A new version is available ({0}). You need to update to play: it downloads and the launcher restarts. Your ROM, settings and save are not touched.",
+          "Une nouvelle version est disponible ({0}). Il faut mettre à jour pour jouer : elle se télécharge et le launcher redémarre. Ta ROM, tes réglages et ta sauvegarde ne sont pas touchés.",
+          "Eine neue Version ist verfügbar ({0}). Zum Spielen musst du aktualisieren: Sie wird heruntergeladen und der Launcher neu gestartet. ROM, Einstellungen und Spielstand bleiben unberührt.",
+          "È disponibile una nuova versione ({0}). Per giocare bisogna aggiornare: viene scaricata e il launcher si riavvia. ROM, impostazioni e salvataggio non vengono toccati.");
+        A("Actualiza para poder jugar", "Update to be able to play", "Mets à jour pour pouvoir jouer", "Aktualisiere, um spielen zu können", "Aggiorna per poter giocare");
         A("Actualizaciones", "Updates", "Mises à jour", "Updates", "Aggiornamenti");
         A("Buscar actualizaciones", "Check for updates", "Rechercher des mises à jour", "Nach Updates suchen", "Cerca aggiornamenti");
         A("El launcher mira al abrirse si hay una versión nueva y la instala con un botón. Tu ROM, tus ajustes y tu partida no se tocan.",

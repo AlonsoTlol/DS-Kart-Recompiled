@@ -453,6 +453,7 @@ partial class Launcher {
             return;
         }
         if (!File.Exists(RutaRom()) && !EligeRom()) return;
+        if (!ActualizadoParaJugar()) return;  // con una versión nueva en GitHub, primero actualizar (Preparar.cs)
         if (HayQuePreparar()) {  // la primera vez, o tras actualizar: se genera desde la ROM (Preparar.cs)
             PreparaYJuega();
             return;
