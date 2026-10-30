@@ -15,9 +15,31 @@
 //     respuestas, lo devuelve poniendo el bit 0x8000.
 //   - El estado compartido (WMStatus) lo escribe el ARM7: u16 state en +0 (0 READY, 1 STOP, 2 IDLE, 3 CLASS1,
 //     5 SCAN, 6 CONNECT, 7 PARENT, 8 CHILD, 9 MP_PARENT, 10 MP_CHILD).
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
+#else
+// en Linux: sockets de siempre (BSD), con los nombres de Winsock que usa este archivo
+#include "compat.h"
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+typedef int SOCKET;
+#define INVALID_SOCKET (-1)
+#define closesocket close
+#define FIONBIO 0
+typedef unsigned long u_long;
+static int ioctlsocket(SOCKET s, long orden, u_long *v) {
+    (void)orden;
+    int f = fcntl(s, F_GETFL, 0);
+    return fcntl(s, F_SETFL, *v ? f | O_NONBLOCK : f & ~O_NONBLOCK);
+}
+#define GetCurrentProcessId getpid
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -194,8 +216,10 @@ static void red_abre(void) {
     red_lista = 1;
     uint8_t m[6];
     wifi_mac(m);
+#ifdef _WIN32
     WSADATA w;
     if (WSAStartup(MAKEWORD(2, 2), &w)) return;
+#endif
     const char *p = getenv("MKDS_LOCAL_PUERTO");
     if (p && atoi(p) > 0) puerto_comun = (uint16_t)atoi(p);
     BOOL si = TRUE;
@@ -268,6 +292,20 @@ static void envia_a_todos(const uint8_t *b, int n) {
     if (nd < 0 || ms_ahora - mirado > 10000) {  // las redes pueden cambiar (Radmin se conecta después)
         mirado = ms_ahora;
         nd = 0;
+#ifndef _WIN32
+        struct ifaddrs *lista;
+        if (!getifaddrs(&lista)) {
+            for (struct ifaddrs *x = lista; x && nd < 16; x = x->ifa_next) {
+                if (!x->ifa_addr || x->ifa_addr->sa_family != AF_INET || !x->ifa_netmask) continue;
+                if (!(x->ifa_flags & IFF_UP) || (x->ifa_flags & IFF_LOOPBACK)) continue;
+                uint32_t ip = ntohl(((struct sockaddr_in *)x->ifa_addr)->sin_addr.s_addr);
+                uint32_t mascara = ntohl(((struct sockaddr_in *)x->ifa_netmask)->sin_addr.s_addr);
+                if (!mascara || mascara == 0xFFFFFFFFu) continue;
+                difusiones[nd++] = ip | ~mascara;
+            }
+            freeifaddrs(lista);
+        }
+#else
         ULONG tam = 16384;
         IP_ADAPTER_ADDRESSES *ad = malloc(tam);
         if (ad && GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
@@ -284,6 +322,7 @@ static void envia_a_todos(const uint8_t *b, int n) {
             }
         }
         free(ad);
+#endif
     }
     struct sockaddr_in d = {0};
     d.sin_family = AF_INET;

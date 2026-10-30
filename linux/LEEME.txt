@@ -1,0 +1,67 @@
+DS Kart Recompiled for Linux (beta)
+===================================
+(Español más abajo)
+
+Mario Kart DS for PC, no emulator. Made by alontube together with Claude.
+The game is NOT included: you need a dump of your own cartridge.
+
+1. Install what's needed (once):
+     Ubuntu / Debian / Mint:   sudo apt install python3 clang libsdl2-dev
+     Arch / Manjaro:           sudo pacman -S python clang sdl2
+     Fedora:                   sudo dnf install python3 clang SDL2-devel
+
+2. Copy your EUROPEAN Mario Kart DS ROM (game code AMCP) to rom/mkds.nds
+
+3. Open a terminal in this folder and run:
+     sh linux/jugar.sh
+
+   The first time it translates your ROM's code and compiles it for your PC:
+   it takes a while (5 to 30 minutes depending on the CPU). After that it
+   starts instantly.
+
+Settings: in ajustes.ini (created the first time): NOMBRE (your name), ESCALA
+(1-4, 3D resolution), FPS (60/120/180/240), PANTALLA_COMPLETA (fullscreen 0/1),
+IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1).
+
+Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
+Enter = Start, Backspace = Select, mouse = stylus on the bottom screen,
+F11 = fullscreen, F10 = save replay (needs ffmpeg).
+Xbox, PlayStation and generic controllers work through SDL.
+
+If something fails, open an issue on GitHub with what the terminal says:
+https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
+
+
+DS Kart Recompiled para Linux (beta)
+===================================
+
+Mario Kart DS para PC, sin emulador. Hecho por alontube junto con Claude.
+El juego NO viene incluido: necesitas una copia de tu propio cartucho.
+
+1. Instala lo necesario (una sola vez):
+     Ubuntu / Debian / Mint:  sudo apt install python3 clang libsdl2-dev
+     Arch / Manjaro:           sudo pacman -S python clang sdl2
+     Fedora:                  sudo dnf install python3 clang SDL2-devel
+
+2. Copia tu ROM de Mario Kart DS EUROPEO (código AMCP) a la carpeta rom/
+   con el nombre mkds.nds  (o sea: rom/mkds.nds)
+
+3. Abre una terminal en esta carpeta y escribe:
+     sh linux/jugar.sh
+
+   La primera vez traduce el código de tu ROM y lo compila para tu PC:
+   tarda bastante (de 5 a 30 minutos según el procesador). Las siguientes
+   veces arranca al momento.
+
+Ajustes: en ajustes.ini (se crea la primera vez): NOMBRE, ESCALA (1-4, resolución
+del 3D), FPS (60/120/180/240), PANTALLA_COMPLETA (0/1), IDIOMA (1 inglés,
+2 francés, 3 alemán, 4 italiano, 5 español), MICRO (0/1).
+
+Controles: flechas = cruceta, X = A, Z = B, S = X, A = Y, Q = L, W = R,
+Enter = Start, Retroceso = Select, ratón = lápiz en la pantalla de abajo,
+F11 = pantalla completa, F10 = guardar repetición (necesita ffmpeg).
+Mandos de Xbox, PlayStation y genéricos: deberían funcionar solos (por favor,
+dinos si el tuyo funciona).
+
+Si algo falla, abre un issue en GitHub con lo que salga en la terminal:
+https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues

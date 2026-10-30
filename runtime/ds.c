@@ -6,7 +6,7 @@
 // Así no hay carreras entre ARM9 y ARM7.
 //
 // El tiempo es el del PC: una VBlank cada 1/60 s, temporizadores a 33,5 MHz.
-#include <windows.h>  // antes que cpu.h: su macro R choca con windows.h
+#include "compat.h"  // antes que cpu.h: su macro R choca con windows.h
 #include "ds.h"
 #include "video.h"
 #include "gpu3d.h"

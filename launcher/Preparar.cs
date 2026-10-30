@@ -26,7 +26,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 partial class Launcher {
-    const string VERSION_NUM = "0.1.2";
+    const string VERSION_NUM = "0.1.3";
     const string REPO = "AlonsoTlol/DS-Kart-Recompiled";
 
     const string URL_PYTHON = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";
@@ -77,7 +77,8 @@ partial class Launcher {
         var l = Lista(Ruta("tools"), "*.py");
         l.Add(Ruta("faltan.txt"));
         l.Add(Ruta("faltan7.txt"));
-        l.AddRange(Lista(Ruta("runtime"), "*.h"));
+        // compat.h no: solo lo usa el runtime (en Windows es windows.h), no el código traducido
+        foreach (string h in Lista(Ruta("runtime"), "*.h")) if (Path.GetFileName(h) != "compat.h") l.Add(h);
         return Huella(l);
     }
 

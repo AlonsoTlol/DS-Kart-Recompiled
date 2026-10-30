@@ -2,8 +2,12 @@
 // Se abre solo cuando el juego empieza a grabar y se cierra cuando para. Graba a 8000 muestras por segundo,
 // 16 bits; ds.c (mic_actualiza) va pidiendo muestras al ritmo del juego. Sin micrófono, o con MKDS_MICRO=0
 // (MICRO=0 en ajustes.ini, opción del launcher), da silencio.
+#ifdef _WIN32
 #include <windows.h>
 #include <mmsystem.h>
+#else
+#include <SDL2/SDL.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,17 +15,58 @@
 
 #define NBUF 6
 #define MUESTRAS 400   // por búfer: 50 ms
+static int16_t anillo[8192];
+static int lee, escribe;  // anillo de lo grabado
+#ifdef _WIN32
 static HWAVEIN entrada;
 static WAVEHDR cab[NBUF];
 static int16_t datos[NBUF][MUESTRAS];
-static int16_t anillo[8192];
-static int lee, escribe;  // anillo de lo grabado
+#else
+static SDL_AudioDeviceID entrada;
+#endif
 
 static int permitido(void) {
     const char *m = getenv("MKDS_MICRO");
     return !m || atoi(m) != 0;
 }
 
+#ifndef _WIN32
+// En Linux lo graba SDL en su hilo y lo deja en el anillo
+static void SDLCALL llega(void *u, Uint8 *d, int bytes) {
+    (void)u;
+    const int16_t *m = (const int16_t *)d;
+    for (int k = 0; k < bytes / 2; k++) {
+        anillo[escribe] = m[k];
+        escribe = (escribe + 1) % 8192;
+        if (escribe == lee) lee = (lee + 1) % 8192;  // lleno: se pierde lo más viejo
+    }
+}
+
+void mic_pc_abre(void) {
+    if (entrada || !permitido()) return;
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO)) return;
+    SDL_AudioSpec quiero = {0}, tengo;
+    quiero.freq = 8000;
+    quiero.format = AUDIO_S16SYS;
+    quiero.channels = 1;
+    quiero.samples = MUESTRAS;
+    quiero.callback = llega;
+    const char *nombre = getenv("MKDS_MICRO_DISPOSITIVO");
+    entrada = SDL_OpenAudioDevice(nombre && *nombre ? nombre : NULL, 1, &quiero, &tengo, 0);
+    if (!entrada && nombre && *nombre) entrada = SDL_OpenAudioDevice(NULL, 1, &quiero, &tengo, 0);
+    fprintf(stderr, "[mkds] micrófono del PC: %s\n", entrada ? "abierto" : SDL_GetError());
+    lee = escribe = 0;
+    if (entrada) SDL_PauseAudioDevice(entrada, 0);
+}
+
+void mic_pc_cierra(void) {
+    if (!entrada) return;
+    SDL_CloseAudioDevice(entrada);
+    entrada = 0;
+}
+
+static void recoge(void) {}
+#else
 void mic_pc_abre(void) {
     if (entrada || !permitido()) return;
     WAVEFORMATEX f = {WAVE_FORMAT_PCM, 1, 8000, 16000, 2, 16, 0};
@@ -87,6 +132,7 @@ static void recoge(void) {
         waveInAddBuffer(entrada, &cab[i], sizeof cab[i]);
     }
 }
+#endif
 
 // El juego (0201EC40) decide que soplas si muchas muestras llegan al tope (|s| >= 125 de 127) y por la forma
 // de la onda: el micrófono de la DS, al soplar, se satura. El del PC graba mucho más flojo (un Razer Seiren da

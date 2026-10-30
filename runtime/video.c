@@ -7,7 +7,7 @@
 // Los motores dibujan línea a línea: 4 fondos + sprites, se ordenan por
 // prioridad, se aplican ventanas, transparencias y el brillo general.
 // De momento se dibuja el fotograma entero al llegar la VBlank.
-#include <windows.h>
+#include "compat.h"
 #include "video.h"
 #include "gpu3d.h"
 #include <string.h>

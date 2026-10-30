@@ -1,7 +1,7 @@
 // Lanzador de Mario Kart DS recompilado.
 // Deja la memoria como la dejaría la DS al encender (código de los dos
 // procesadores, cabecera de la ROM) y los arranca. El hardware está en ds.c.
-#include <windows.h>  // antes que cpu.h: su macro R choca con windows.h
+#include "compat.h"  // antes que cpu.h: su macro R choca con windows.h
 #include "ds.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -135,6 +135,7 @@ static DWORD WINAPI vigilante(LPVOID p) {
     }
 }
 
+#ifdef _WIN32
 static LONG WINAPI al_romperse(EXCEPTION_POINTERS *e) {
     DWORD cod = e->ExceptionRecord->ExceptionCode;
     if (cod != EXCEPTION_ACCESS_VIOLATION && cod != EXCEPTION_STACK_OVERFLOW &&
@@ -148,6 +149,16 @@ static LONG WINAPI al_romperse(EXCEPTION_POINTERS *e) {
     fflush(stderr);
     ExitProcess(9);
 }
+#else
+#include <signal.h>
+static void al_romperse(int sen) {
+    fprintf(stderr, "\n[mkds] fallo en el PC (señal %d)\n", sen);
+    volcado(&g_cpu9);
+    volcado(&g_cpu7);
+    fflush(stderr);
+    _exit(9);
+}
+#endif
 
 static void *carga(const char *ruta, size_t *n) {
     FILE *f = fopen(ruta, "rb");
@@ -274,6 +285,20 @@ static void carga_codigo(const uint8_t *rom, size_t n) {
 
 // La carpeta del juego es la del launcher (rom\, ajustes.ini, partida.sav, repeticiones\), una por encima de
 // build\. Si se abre build\mkds.exe con doble clic, Windows arranca en build\ y no encontraba la ROM.
+#ifndef _WIN32
+static void ve_a_la_carpeta_del_juego(void) {  // en Linux, igual: el ejecutable está en build/
+    static char ruta[MAX_PATH];
+    ssize_t n = readlink("/proc/self/exe", ruta, sizeof ruta - 1);
+    if (n <= 0) return;
+    ruta[n] = 0;
+    char *barra = strrchr(ruta, '/');
+    if (!barra) return;
+    *barra = 0;
+    barra = strrchr(ruta, '/');
+    if (barra && !strcmp(barra + 1, "build")) *barra = 0;
+    if (chdir(ruta)) {}
+}
+#else
 static void ve_a_la_carpeta_del_juego(void) {
     wchar_t ruta[MAX_PATH];
     DWORD n = GetModuleFileNameW(NULL, ruta, MAX_PATH);
@@ -285,15 +310,20 @@ static void ve_a_la_carpeta_del_juego(void) {
     if (barra && !_wcsicmp(barra + 1, L"build")) *barra = 0;
     SetCurrentDirectoryW(ruta);
 }
+#endif
 
-int main(void) {
+static int arranca(void) {
     ve_a_la_carpeta_del_juego();
     lee_ajustes();
     size_t n;
     FILE *hay = fopen("rom/mkds.nds", "rb");
     if (!hay) {
+#ifdef _WIN32
         MessageBoxW(NULL, L"No encuentro el juego (rom\\mkds.nds).\nElige tu ROM desde el launcher.",
                     L"DS Kart Recompiled", MB_ICONWARNING);
+#else
+        fprintf(stderr, "No encuentro el juego (rom/mkds.nds). Pon tu ROM ahí (ver LEEME).\n");
+#endif
         return 1;
     }
     fclose(hay);
@@ -320,7 +350,31 @@ int main(void) {
         fprintf(stderr, "[mkds] todo desbloqueado\n");
     }
     CreateThread(NULL, 0, vigilante, NULL, 0, NULL);
+#ifdef _WIN32
     AddVectoredExceptionHandler(1, al_romperse);
+#else
+    signal(SIGSEGV, al_romperse);
+    signal(SIGILL, al_romperse);
+    signal(SIGFPE, al_romperse);
+    signal(SIGBUS, al_romperse);
+#endif
     ds_arranca(0x02000800, 0x02380000);
     return 0;
 }
+
+#ifdef _WIN32
+int main(void) { return arranca(); }  // la pila de 256 MB la pone el enlazador (/STACK)
+#else
+__thread CompatFibra *compat_fibra_actual;  // la fibra en la que se está (compat.h)
+// En Linux la pila del hilo principal es de 8 MB: el juego va en un hilo con 256 MB, como en Windows
+static void *hilo_juego(void *p) { (void)p; exit(arranca()); }
+int main(void) {
+    pthread_attr_t a;
+    pthread_attr_init(&a);
+    pthread_attr_setstacksize(&a, 256u << 20);
+    pthread_t h;
+    if (pthread_create(&h, &a, hilo_juego, NULL)) return arranca();
+    pthread_join(h, NULL);
+    return 0;
+}
+#endif

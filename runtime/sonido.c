@@ -9,8 +9,12 @@
 //   +4 SAD  dirección de las muestras    +8 TMR  frecuencia (16,76 MHz / (0x10000 - TMR))
 //   +A PNT  inicio del bucle (palabras)  +C LEN  longitud tras el bucle (palabras)
 // y en 0x04000500 el volumen general.
-#include <windows.h>  // antes que cpu.h: su macro R choca con windows.h
+#include "compat.h"  // antes que cpu.h: su macro R choca con windows.h
+#ifdef _WIN32
 #include <mmsystem.h>
+#else
+#include <SDL2/SDL.h>
+#endif
 #include "ds.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,6 +174,7 @@ static void mezcla(int16_t *sal, int n_muestras) {
     }
 }
 
+#ifdef _WIN32
 static DWORD WINAPI hilo_sonido(LPVOID p) {
     (void)p;
     HANDLE evento = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -205,5 +210,28 @@ void sonido_inicia(void) {
     HANDLE h = CreateThread(NULL, 0, hilo_sonido, NULL, 0, NULL);
     SetThreadPriority(h, THREAD_PRIORITY_ABOVE_NORMAL);
 }
+#else
+// En Linux, SDL pide las muestras cuando le hacen falta (en su propio hilo)
+static void SDLCALL pide_sonido(void *u, Uint8 *datos, int bytes) {
+    (void)u;
+    int n = bytes / 4;
+    mezcla((int16_t *)datos, n);
+    repe_audio((int16_t *)datos, n);
+}
+
+void sonido_inicia(void) {
+    if (getenv("MKDS_OCULTO") || getenv("MKDS_SIN_SONIDO")) return;  // pruebas: en silencio
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO)) { fprintf(stderr, "[sonido] SDL: %s\n", SDL_GetError()); return; }
+    SDL_AudioSpec quiero = {0}, tengo;
+    quiero.freq = FREC;
+    quiero.format = AUDIO_S16SYS;
+    quiero.channels = 2;
+    quiero.samples = MUESTRAS;
+    quiero.callback = pide_sonido;
+    SDL_AudioDeviceID d = SDL_OpenAudioDevice(NULL, 0, &quiero, &tengo, 0);  // SDL convierte si hace falta
+    if (!d) { fprintf(stderr, "[sonido] no se pudo abrir la salida de audio: %s\n", SDL_GetError()); return; }
+    SDL_PauseAudioDevice(d, 0);
+}
+#endif
 
 int sonido_activo(void) { return !getenv("MKDS_OCULTO") && !getenv("MKDS_SIN_SONIDO"); }

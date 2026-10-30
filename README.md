@@ -29,7 +29,7 @@ Because it runs natively, it can go beyond the original:
 
 ## What you will need
 
-- Windows 10 or 11 (64-bit)
+- Windows 10 or 11 (64-bit), or **Linux (beta)**
 - A dump of **your own** European *Mario Kart DS* cartridge (game code `AMCP`).
   **The game is not and will never be included here.**
 
@@ -46,6 +46,19 @@ No Nintendo code is distributed: the download only contains this project's own c
 generated on your PC from your own cartridge.
 
 If Windows SmartScreen warns you, click "More info" › "Run anyway" (the launcher isn't signed).
+
+### Linux (beta)
+
+The same zip works on Linux. There's no launcher window yet: a script prepares the game and starts it, and the
+settings go in `ajustes.ini`.
+
+1. Install the tools (once): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
+   `sudo pacman -S python clang sdl2` (Arch) or `sudo dnf install python3 clang SDL2-devel` (Fedora).
+2. Copy your ROM to `rom/mkds.nds`.
+3. In a terminal inside the folder: `sh linux/jugar.sh`. The first time it builds the game from your ROM
+   (5–30 minutes depending on the CPU).
+
+Details in `linux/LEEME.txt`. Window, sound, keyboard and controllers go through SDL2.
 
 ## System requirements
 
@@ -68,6 +81,8 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
+- 🧪 Linux (beta) — works, without a launcher window yet
+- 🔜 An in-game settings menu (graphics, controls, audio), for Windows and Linux
 - 🔜 **Online play is not available yet.** It's coming soon, through community servers.
 
 ## Credits
@@ -112,7 +127,7 @@ Como funciona de forma nativa, puede ir más allá del original:
 
 ## Qué hace falta
 
-- Windows 10 u 11 (64 bits)
+- Windows 10 u 11 (64 bits), o **Linux (beta)**
 - Una copia de **tu propio cartucho** de *Mario Kart DS* europeo (código `AMCP`).
   **El juego no está ni estará nunca aquí.**
 
@@ -130,6 +145,19 @@ No se reparte código de Nintendo: la descarga solo lleva el código de este pro
 PC a partir de tu propio cartucho.
 
 Si Windows SmartScreen avisa, pulsa "Más información" › "Ejecutar de todas formas" (el launcher no está firmado).
+
+### Linux (beta)
+
+El mismo zip funciona en Linux. Todavía no hay ventana de launcher: un script prepara el juego y lo abre, y los
+ajustes van en `ajustes.ini`.
+
+1. Instala las herramientas (una vez): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
+   `sudo pacman -S python clang sdl2` (Arch) o `sudo dnf install python3 clang SDL2-devel` (Fedora).
+2. Copia tu ROM a `rom/mkds.nds`.
+3. En una terminal dentro de la carpeta: `sh linux/jugar.sh`. La primera vez genera el juego desde tu ROM
+   (de 5 a 30 minutos según el procesador).
+
+Más detalles en `linux/LEEME.txt`. La ventana, el sonido, el teclado y los mandos van con SDL2.
 
 ## Requisitos del sistema
 
@@ -152,6 +180,8 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
+- 🧪 Linux (beta): funciona, todavía sin ventana de launcher
+- 🔜 Un menú de ajustes dentro del juego (gráficos, mandos, audio), para Windows y Linux
 - 🔜 **El online todavía no está disponible.** Llegará pronto, con servidores de la comunidad.
 
 ## Créditos

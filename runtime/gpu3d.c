@@ -533,7 +533,7 @@ void gx_inicia(void) {
 //   - Todo ocurre en un hilo aparte mientras el juego prepara la escena
 //     siguiente. Si el juego termina otra escena antes de que acabe la
 //     anterior, esa se salta (mejor perder un fotograma que frenar el juego).
-#include <windows.h>
+#include "compat.h"
 
 static inline uint8_t tex8(uint32_t o) {
     uint8_t *p = g_tex[(o >> 17) & 3];

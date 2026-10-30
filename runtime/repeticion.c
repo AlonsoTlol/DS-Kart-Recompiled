@@ -4,7 +4,10 @@
 //
 // Imagen: 30 fotogramas por segundo, las dos pantallas lado a lado (principal a
 // la izquierda), en 15 bits por píxel. Sonido: el mismo que sale por los altavoces.
-#include <windows.h>
+#include "compat.h"
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,13 +86,17 @@ static DWORD WINAPI hilo_guarda(LPVOID p) {
     uint32_t muestras = (uint32_t)((uint64_t)frames * FREC / FPS_REPE);
     if (muestras > na) muestras = (uint32_t)(na < MUESTRAS_AUDIO ? na : MUESTRAS_AUDIO);
     if (frames < FPS_REPE) { pon_aviso("Aún no hay suficiente grabado", 3000); guardando = 0; return 0; }
+#ifdef _WIN32
     CreateDirectoryA("repeticiones", NULL);
+#else
+    mkdir("repeticiones", 0755);
+#endif
     char raw[MAX_PATH], wav[MAX_PATH], mp4[MAX_PATH];
     time_t t = time(NULL);
     struct tm *lt = localtime(&t);
-    snprintf(raw, sizeof raw, "repeticiones\\tmp_video.raw");
-    snprintf(wav, sizeof wav, "repeticiones\\tmp_audio.wav");
-    snprintf(mp4, sizeof mp4, "repeticiones\\MKDS_%04d-%02d-%02d_%02d-%02d-%02d.mp4", lt->tm_year + 1900,
+    snprintf(raw, sizeof raw, "repeticiones/tmp_video.raw");
+    snprintf(wav, sizeof wav, "repeticiones/tmp_audio.wav");
+    snprintf(mp4, sizeof mp4, "repeticiones/MKDS_%04d-%02d-%02d_%02d-%02d-%02d.mp4", lt->tm_year + 1900,
              lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
     FILE *f = fopen(raw, "wb");
     if (!f) { guardando = 0; return 0; }
@@ -116,9 +123,10 @@ static DWORD WINAPI hilo_guarda(LPVOID p) {
              "-i \"%s\" -vf scale=%d:%d:flags=neighbor -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p "
              "-c:a aac -b:a 160k -shortest \"%s\"",
              ANCHO, ALTO, FPS_REPE, raw, wav, ANCHO * 2, ALTO * 2, mp4);
+    DWORD codigo = 1;
+#ifdef _WIN32
     STARTUPINFOA si = {sizeof si};
     PROCESS_INFORMATION pi;
-    DWORD codigo = 1;
     if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, NULL, NULL,
                        &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -126,8 +134,11 @@ static DWORD WINAPI hilo_guarda(LPVOID p) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     }
-    DeleteFileA(raw);
-    DeleteFileA(wav);
+#else
+    codigo = (DWORD)system(cmd);
+#endif
+    remove(raw);
+    remove(wav);
     if (codigo == 0) {
         char m[128];
         snprintf(m, sizeof m, "¡Repetición guardada! (%u s)", frames / FPS_REPE);

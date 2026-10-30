@@ -9,10 +9,11 @@ cd "$(dirname "$0")/.."
 V=$(grep -o 'VERSION_NUM = "[0-9.]*"' launcher/Preparar.cs | grep -o '[0-9.]*')
 sh launcher/compilar.sh
 D=publicar/tmp/DS-Kart-Recompiled
-rm -rf publicar/tmp && mkdir -p $D/tools $D/runtime
+rm -rf publicar/tmp && mkdir -p $D/tools $D/runtime $D/linux
 cp Launcher.exe LICENSE faltan.txt faltan7.txt publicar/README.txt $D/
 cp tools/nds_rom.py tools/recomp.py tools/traducir_mkds.py $D/tools/
 cp runtime/*.c runtime/*.h $D/runtime/
+cp linux/preparar.sh linux/jugar.sh linux/LEEME.txt $D/linux/  # Linux (beta): sh linux/jugar.sh
 rm -f publicar/*.zip publicar/portada.mp4
 cp portada.mp4 $D/
 (cd publicar/tmp && powershell -NoProfile -Command "Compress-Archive -Path DS-Kart-Recompiled -DestinationPath ../DS-Kart-Recompiled-v$V.zip")

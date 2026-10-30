@@ -9,7 +9,7 @@
 //     propio OS_LoadContext; restaura los registros y vuelve (ver entra()).
 //     Si el contexto es de un hilo nuevo, crea su fibra y lo arranca.
 // Los dos procesadores tienen sus propios hilos (g_so[c->id]).
-#include <windows.h>  // antes que cpu.h: su macro R choca con windows.h
+#include "compat.h"  // antes que cpu.h: su macro R choca con windows.h
 #include "ds.h"
 #include <stdio.h>
 #include <stdlib.h>
