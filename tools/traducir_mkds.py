@@ -92,6 +92,12 @@ def overlays(ext, info, fijas):
             # y 021A0E34 si el jefe del nivel está abierto (las 8 misiones superadas)
             ganchos = {(0x0219F3A4, True): ("truco_niveles_mision", False, "si"),
                        (0x021A0E34, True): ("truco_jefe_mision", False, "si")} if n == 1 else None
+            if n == 0:  # Conexión Wi-Fi de Nintendo: cada cambio de fase del WCM (021A57FC), para depurar
+                ganchos = {(0x021A57FC, True): ("traza_wcm_fase", False, "si")}
+                # DEPURA_O0="021A6974,021A6ABC": apuntar cada llamada a esas funciones Thumb (MKDS_WIFI_LOG)
+                for x in os.environ.get("DEPURA_O0", "").split(","):
+                    if x:
+                        ganchos[(int(x, 16), True)] = ("traza_llamada", False, "si")
             rcs[n] = traduce(f"overlay {n}", img, sorted(entries), ganchos, f"mkds_o{n}", escribir=False,
                              prefix=f"_o{n}", disp="dispatch", external=fijas, firmas=True,
                              debiles=debiles)

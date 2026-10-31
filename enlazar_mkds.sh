@@ -14,6 +14,6 @@ for f in runtime/menu.cpp runtime/imgui/imgui.cpp runtime/imgui/imgui_draw.cpp r
     fi
 done
 "$CLANG" -O2 -w -Iruntime build/mkds*/*.o build/menu/*.o \
-    runtime/cpu.c runtime/memoria.c runtime/bios.c runtime/hilos.c runtime/ds.c runtime/video.c runtime/gpu3d.c runtime/ventana.c runtime/sonido.c runtime/repeticion.c runtime/microfono.c runtime/wifi.c runtime/main_mkds.c \
-    -lwinmm -lgdi32 -lopengl32 -luser32 -lxinput -lhid -lsetupapi -lws2_32 -liphlpapi -g -Wl,/STACK:268435456 -Wl,-debug -o build/mkds.exe
+    runtime/cpu.c runtime/memoria.c runtime/bios.c runtime/hilos.c runtime/ds.c runtime/video.c runtime/gpu3d.c runtime/ventana.c runtime/sonido.c runtime/repeticion.c runtime/microfono.c runtime/wifi.c runtime/wfc.c runtime/wfc_servicios.c runtime/http.c runtime/main_mkds.c \
+    -lwinmm -lgdi32 -lopengl32 -luser32 -lxinput -lhid -lsetupapi -lws2_32 -liphlpapi -lwinhttp -g -Wl,/STACK:268435456 -Wl,-debug -o build/mkds.exe
 echo "ok: build/mkds.exe"

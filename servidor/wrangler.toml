@@ -1,0 +1,12 @@
+# Servidor de salas del online (ver salas.js). Probar en local: npx wrangler@3 dev   Publicar: npx wrangler@3 deploy
+name = "dskart-salas"
+main = "salas.js"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "SALAS"
+class_name = "Salas"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Salas"]

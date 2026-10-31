@@ -24,6 +24,10 @@ void gx_pon_fps(int fps);                       // gpu3d.c: imágenes por segund
 void sonido_pon_volumen(int volumen, int silencio);  // sonido.c
 void mic_pon(int activo, int ganancia);          // microfono.c
 void nombre_cambia(void);                        // main_mkds.c: vuelve a leer MKDS_NOMBRE
+void online_crear(void);                         // wifi.c: salas del online
+void online_unirse(const char *codigo);
+void online_salir(void);
+int online_estado(char *codigo, int *jugadores);
 }
 
 // ---- cola de lo que llega del hilo de la ventana ------------------------------------------------------
@@ -248,6 +252,45 @@ static const Texto textos[] = {
     {"Círculo", "Circle", "Rond", "Kreis", "Cerchio"},
     {"Triángulo", "Triangle", "Triangle", "Dreieck", "Triangolo"},
     {"Cuadrado", "Square", "Carré", "Quadrat", "Quadrato"},
+    {"Jugar por internet", "Play over the internet", "Jouer en ligne", "Online spielen", "Gioca su internet"},
+    {"Hasta 8 jugadores, sin Radmin. Uno crea una sala y pasa el código a los demás; luego se juega con el Multijugador del juego.",
+     "Up to 8 players, no Radmin needed. One creates a room and shares the code; then you play with the game's Multiplayer mode.",
+     "Jusqu'à 8 joueurs, sans Radmin. L'un crée un salon et partage le code ; ensuite on joue avec le mode Multijoueur du jeu.",
+     "Bis zu 8 Spieler, ohne Radmin. Einer erstellt einen Raum und teilt den Code; dann spielt ihr im Mehrspielermodus des Spiels.",
+     "Fino a 8 giocatori, senza Radmin. Uno crea una stanza e condivide il codice; poi si gioca con il Multigiocatore del gioco."},
+    {"Tu sala", "Your room", "Ton salon", "Dein Raum", "La tua stanza"},
+    {"Estás en la sala", "You're in room", "Tu es dans le salon", "Du bist im Raum", "Sei nella stanza"},
+    {"Jugadores en la sala: %d", "Players in the room: %d", "Joueurs dans le salon : %d", "Spieler im Raum: %d", "Giocatori nella stanza: %d"},
+    {"Pasa el código a tus amigos. Luego, en el juego: Multijugador > Crear un grupo, y LISTO cuando estén todos.",
+     "Share the code with your friends. Then, in the game: Multiplayer > Create a group, and READY when everyone is in.",
+     "Partage le code avec tes amis. Puis, dans le jeu : Multijoueur > Créer un groupe, et PRÊT quand tout le monde est là.",
+     "Teile den Code mit deinen Freunden. Dann im Spiel: Mehrspieler > Gruppe erstellen, und BEREIT, wenn alle da sind.",
+     "Condividi il codice con i tuoi amici. Poi, nel gioco: Multigiocatore > Crea un gruppo, e PRONTO quando ci sono tutti."},
+    {"Ahora, en el juego: Multijugador y elige el grupo de la lista.", "Now, in the game: Multiplayer, and pick the group from the list.",
+     "Maintenant, dans le jeu : Multijoueur, et choisis le groupe dans la liste.", "Jetzt im Spiel: Mehrspieler, und wähle die Gruppe aus der Liste.",
+     "Ora, nel gioco: Multigiocatore, e scegli il gruppo dalla lista."},
+    {"Salir de la sala", "Leave the room", "Quitter le salon", "Raum verlassen", "Esci dalla stanza"},
+    {"Conectando…", "Connecting…", "Connexion…", "Verbinden…", "Connessione…"},
+    {"No se pudo conectar con el servidor de salas. ¿Hay internet?", "Couldn't reach the room server. Are you online?",
+     "Impossible de joindre le serveur de salons. Es-tu connecté ?", "Raumserver nicht erreichbar. Bist du online?",
+     "Impossibile raggiungere il server delle stanze. Sei connesso?"},
+    {"No se pudo averiguar tu dirección en internet.", "Couldn't find out your internet address.",
+     "Impossible de trouver ton adresse internet.", "Deine Internetadresse konnte nicht ermittelt werden.",
+     "Impossibile trovare il tuo indirizzo internet."},
+    {"Esa sala no existe (o ya se cerró).", "That room doesn't exist (or it was closed).", "Ce salon n'existe pas (ou il a été fermé).",
+     "Diesen Raum gibt es nicht (oder er wurde geschlossen).", "Quella stanza non esiste (o è stata chiusa)."},
+    {"Esa sala es de otra versión del juego: actualizad los dos.", "That room is from another game version: both of you, update.",
+     "Ce salon vient d'une autre version du jeu : mettez-vous à jour.", "Der Raum ist von einer anderen Spielversion: beide aktualisieren.",
+     "Quella stanza è di un'altra versione del gioco: aggiornate entrambi."},
+    {"La sala está llena (8 jugadores).", "The room is full (8 players).", "Le salon est plein (8 joueurs).",
+     "Der Raum ist voll (8 Spieler).", "La stanza è piena (8 giocatori)."},
+    {"La sala se ha cerrado.", "The room has been closed.", "Le salon a été fermé.", "Der Raum wurde geschlossen.", "La stanza è stata chiusa."},
+    {"Crear sala", "Create room", "Créer un salon", "Raum erstellen", "Crea stanza"},
+    {"Unirse a una sala", "Join a room", "Rejoindre un salon", "Raum beitreten", "Entra in una stanza"},
+    {"Unirse", "Join", "Rejoindre", "Beitreten", "Entra"},
+    {"Escribe el código de 6 letras que te pase el que creó la sala.", "Type the 6-letter code from whoever created the room.",
+     "Tape le code de 6 lettres de celui qui a créé le salon.", "Gib den 6-stelligen Code von dem ein, der den Raum erstellt hat.",
+     "Scrivi il codice di 6 lettere di chi ha creato la stanza."},
 };
 
 static const char *T(const char *es) {
@@ -355,7 +398,7 @@ extern "C" int menu_inicia(void) {
     listo = 1;
     if (getenv("MKDS_MENU_ABIERTO")) {  // pruebas: arranca con el menú abierto (y en esa pestaña, 0-3)
         abierto = 1;
-        pestaña_pedida = atoi(getenv("MKDS_MENU_ABIERTO")) % 4;
+        pestaña_pedida = atoi(getenv("MKDS_MENU_ABIERTO")) % 5;
     }
     return 1;
 }
@@ -394,7 +437,7 @@ static void vacia_cola(void) {
         switch (e.tipo) {
         case EV_TECLA:
             if (e.a == MT_PAD_L || e.a == MT_PAD_R) {  // L / R: pestaña anterior / siguiente
-                if (e.b) pestaña_pedida = (pestaña_actual + (e.a == MT_PAD_R ? 1 : 3)) % 4;
+                if (e.b) pestaña_pedida = (pestaña_actual + (e.a == MT_PAD_R ? 1 : 4)) % 5;
             } else if (e.a == MT_PAD_ATRAS && e.b) {
                 abierto = 0;  // B en el mando: volver al juego (como en los menús de la DS)
                 if (cambiado) { guarda_ajustes(); cambiado = 0; }
@@ -535,6 +578,60 @@ static void pestaña_juego(void) {
     ayuda(T("Solo si no os veis en la lista de grupos (por ejemplo, su IP de Radmin). Vacío = buscar solo."));
 }
 
+// el estado que da online_estado (wifi.c, ONL_...)
+enum { ONL_NADA, ONL_CONECTANDO, ONL_SIN_SERVIDOR, ONL_SIN_STUN, ONL_NO_EXISTE, ONL_VERSION, ONL_LLENA, ONL_EN_SALA,
+       ONL_UNIDO, ONL_CERRADA };
+
+static void pestaña_online(void) {
+    char codigo[8] = "";
+    int jugadores = 0;
+    int e = online_estado(codigo, &jugadores);
+    titulo(T("Jugar por internet"));
+    ayuda(T("Hasta 8 jugadores, sin Radmin. Uno crea una sala y pasa el código a los demás; luego se juega con el Multijugador del juego."));
+    ImGui::Spacing();
+    if (e == ONL_EN_SALA || e == ONL_UNIDO) {
+        ImGui::TextUnformatted(T(e == ONL_EN_SALA ? "Tu sala" : "Estás en la sala"));
+        ImGui::SetWindowFontScale(2.2f);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.79f, 0.25f, 1));
+        ImGui::TextUnformatted(codigo);
+        ImGui::PopStyleColor();
+        ImGui::SetWindowFontScale(1);
+        if (e == ONL_EN_SALA) {
+            ImGui::Text(T("Jugadores en la sala: %d"), jugadores + 1);
+            ayuda(T("Pasa el código a tus amigos. Luego, en el juego: Multijugador > Crear un grupo, y LISTO cuando estén todos."));
+        } else {
+            ayuda(T("Ahora, en el juego: Multijugador y elige el grupo de la lista."));
+        }
+        ImGui::Spacing();
+        if (ImGui::Button(T("Salir de la sala"))) online_salir();
+        return;
+    }
+    if (e == ONL_CONECTANDO) { ImGui::TextUnformatted(T("Conectando…")); return; }
+    static const char *errores[] = {NULL, NULL, "No se pudo conectar con el servidor de salas. ¿Hay internet?",
+                                    "No se pudo averiguar tu dirección en internet.", "Esa sala no existe (o ya se cerró).",
+                                    "Esa sala es de otra versión del juego: actualizad los dos.", "La sala está llena (8 jugadores).",
+                                    NULL, NULL, "La sala se ha cerrado."};
+    if (e < 10 && errores[e]) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.54f, 0.48f, 1));
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextUnformatted(T(errores[e]));
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+    if (ImGui::Button(T("Crear sala"), ImVec2(-1, 0))) online_crear();
+    ImGui::Spacing();
+    titulo(T("Unirse a una sala"));
+    static char pon[8];
+    ImGui::SetNextItemWidth(160 * ImGui::GetIO().FontGlobalScale * 34 / 21);
+    ImGui::InputText("##codigo", pon, 7, ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CharsNoBlank);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(strlen(pon) != 6);
+    if (ImGui::Button(T("Unirse"))) online_unirse(pon);
+    ImGui::EndDisabled();
+    ayuda(T("Escribe el código de 6 letras que te pase el que creó la sala."));
+}
+
 static void contador_fps(float W, float s) {
     ImGui::SetNextWindowPos(ImVec2(W - 12 * s, 12 * s), ImGuiCond_Always, ImVec2(1, 0));
     ImGui::SetNextWindowBgAlpha(0.6f);
@@ -589,6 +686,7 @@ extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
             if (pestaña(T("Mandos"), 1)) { ImGui::BeginChild("m", ImVec2(0, -pie)); pestaña_mandos(); ImGui::EndChild(); ImGui::EndTabItem(); }
             if (pestaña(T("Audio"), 2)) { ImGui::BeginChild("a", ImVec2(0, -pie)); pestaña_audio(); ImGui::EndChild(); ImGui::EndTabItem(); }
             if (pestaña(T("Juego"), 3)) { ImGui::BeginChild("j", ImVec2(0, -pie)); pestaña_juego(); ImGui::EndChild(); ImGui::EndTabItem(); }
+            if (pestaña("Online", 4)) { ImGui::BeginChild("o", ImVec2(0, -pie)); pestaña_online(); ImGui::EndChild(); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
         pestaña_pedida = -1;

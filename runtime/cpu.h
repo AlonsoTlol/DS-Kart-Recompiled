@@ -66,6 +66,8 @@ int truco_niveles_mision(Cpu *c);
 int truco_jefe_mision(Cpu *c);
 int gancho_ds_empieza(Cpu *c);
 int gancho_ds_paso(Cpu *c);
+int traza_wcm_fase(Cpu *c);
+int traza_llamada(Cpu *c);
 void **hle_ctx_buf(Cpu *c, uint32_t ctx);
 
 // ---- memoria ---------------------------------------------------------------

@@ -25,6 +25,7 @@ static int g_traza;  // MKDS_TRAZA=1: apunta mensajes de la FIFO e interrupcione
 static uint64_t cont_tarjeta, cont_3d;  // bytes leídos de la ROM, escrituras al motor 3D
 uint8_t g_wramcnt = 3;
 SoConfig g_so[2];
+int g_sin_irq[2];
 volatile uint32_t g_actividad;  // para el vigilante de main_mkds.c
 
 #define RELOJ 33513982.0      // ciclos por segundo del bus de la DS
@@ -357,6 +358,7 @@ static int irq_lista(int id) { return (hw[id].ime & 1) && (hw[id].ie & hw[id].if
 // `forzar`: la BIOS (IntrWait) las acepta aunque el CPSR las tenga desactivadas.
 static void entrega(Cpu *c, int forzar) {
     if (!(hw[c->id].ie & hw[c->id].if_)) return;
+    if (g_sin_irq[c->id]) return;  // guardando o cargando un contexto de hilo (hilos.c): luego
     if (!forzar && (!(hw[c->id].ime & 1) || (c->ctl & 0x80))) return;
     static int sin_irq = -1;  // MKDS_TRAZA=2: solo la FIFO, sin las interrupciones
     if (sin_irq < 0) sin_irq = getenv("MKDS_TRAZA") && atoi(getenv("MKDS_TRAZA")) == 2;
@@ -803,6 +805,10 @@ static void sav_dato(uint8_t v) {
 
 // ---- SPI del ARM7: gestor de energía, firmware y pantalla táctil -----------------
 static uint8_t firmware[0x40000];
+#define WFC_INI 0x3FA00  // ajustes de conexión de la CWF (ver prepara_wfc)
+#define WFC_TAM 0x300
+static int wfc_cambiado;
+static void guarda_wfc(void);
 static struct { uint16_t cnt; uint8_t dato; int pos; uint8_t cmd; uint32_t dir; uint8_t wel; } spi;
 static uint8_t pm_regs[8] = {0x0C, 0x00, 0x01, 0x00, 0x01};
 static uint8_t tsc_sal[2];
@@ -835,14 +841,21 @@ static uint8_t spi_byte(uint8_t b) {
         case 0x9F: return pos == 1 ? 0x20 : pos == 2 ? 0x40 : 0x12;
         case 0x0A: case 0x02:  // escribir página
             if (pos <= 3) { spi.dir = (spi.dir << 8) | b; return 0; }
-            if (spi.wel) firmware[spi.dir & 0x3FF00 | (spi.dir & 0xFF)] = b;
+            if (spi.wel) {
+                uint32_t d = spi.dir & 0x3FF00 | (spi.dir & 0xFF);
+                firmware[d] = b;
+                if (d >= WFC_INI && d < WFC_INI + WFC_TAM) wfc_cambiado = 1;  // se guarda al soltar el chip
+            }
             spi.dir = (spi.dir & ~0xFFu) | ((spi.dir + 1) & 0xFF);
             return 0;
         case 0xDB: case 0xD8:  // borrar página / sector
             if (pos <= 3) { spi.dir = (spi.dir << 8) | b; }
             if (pos == 3 && spi.wel)
+            {
                 memset(firmware + (spi.dir & (spi.cmd == 0xDB ? 0x3FF00 : 0x30000)), 0xFF,
                        spi.cmd == 0xDB ? 0x100 : 0x10000);
+                if ((spi.dir & 0x3FFFF) >= 0x30000) wfc_cambiado = 1;
+            }
             return 0;
         }
         return 0xFF;
@@ -878,6 +891,37 @@ static uint16_t crc16(uint16_t crc, const uint8_t *p, size_t n) {
         for (int j = 0; j < 8; j++) c = (c & 1) ? (c >> 1) ^ 0xA001 : c >> 1;
     }
     return (uint16_t)c;
+}
+
+// Ajustes de conexión de la Conexión Wi-Fi de Nintendo (en la DS, "Ajustes de la CWF"): tres puntos de acceso de
+// 0x100 bytes en 0x3FA00, 0x3FB00 y 0x3FC00: +40 SSID, +C0 IP/puerta/DNS (0 = automático), +E6 WEP (0 = sin
+// clave), +E7 estado (0 normal, FF sin configurar), +EF puntos configurados (bit por punto), +F0 ID de la CWF
+// (43 bits; 0 = aún sin crear: el juego lo crea y lo escribe), +FE CRC16 (valor inicial 0).
+// El primero es el "punto de acceso" que imita wifi.c. Lo que escribe el juego (su ID de la CWF, que tiene que
+// ser distinto en cada jugador y no cambiar) se guarda en wfc.bin, junto a la partida.
+static void prepara_wfc(void) {
+    FILE *f = fopen("wfc.bin", "rb");
+    if (f) {
+        int n = (int)fread(firmware + WFC_INI, 1, WFC_TAM, f);
+        fclose(f);
+        if (n == WFC_TAM) return;
+    }
+    for (int k = 0; k < 3; k++) {
+        uint8_t *a = firmware + WFC_INI + 0x100 * k;
+        memset(a, 0, 0x100);
+        if (k == 0) memcpy(a + 0x40, "DSKartRecompiled", 16);
+        a[0xE7] = k == 0 ? 0x00 : 0xFF;
+        a[0xEF] = 0x01;
+        uint16_t c = crc16(0, a, 0xFE);
+        memcpy(a + 0xFE, &c, 2);
+    }
+}
+
+static void guarda_wfc(void) {
+    if (!wfc_cambiado) return;
+    wfc_cambiado = 0;
+    FILE *f = fopen("wfc.bin", "wb");
+    if (f) { fwrite(firmware + WFC_INI, 1, WFC_TAM, f); fclose(f); }
 }
 
 // Un firmware inventado con los ajustes de la consola (nombre, idioma, táctil)
@@ -926,6 +970,7 @@ static void prepara_firmware(void) {
     crc = crc16(0xFFFF, u, 0x70);
     memcpy(u + 0x72, &crc, 2);
     memcpy(firmware + 0x3FF00, u, 0x100);
+    prepara_wfc();
     // lo que el arranque de la consola deja en RAM: ajustes y datos de la tarjeta
     memcpy(g_main + 0x3FFC80, firmware + 0x3FE00, 0x70);
     uint32_t chip = 0x00001FC2;
@@ -1185,8 +1230,10 @@ void io7_wr(uint32_t a, uint32_t v, int bytes) {
             spi.dato = spi_byte((uint8_t)v);
             if (!(spi.cnt & 0x800)) {  // fin de la orden
                 if (((spi.cnt >> 8) & 3) == 1 && spi.pos > 1 &&
-                    (spi.cmd == 0x0A || spi.cmd == 0x02 || spi.cmd == 0xDB || spi.cmd == 0xD8))
+                    (spi.cmd == 0x0A || spi.cmd == 0x02 || spi.cmd == 0xDB || spi.cmd == 0xD8)) {
                     spi.wel = 0;
+                    guarda_wfc();  // si el juego ha escrito sus ajustes de la CWF (el ID), a wfc.bin
+                }
                 spi.pos = 0;
             }
             if (spi.cnt & 0x4000) irq(1, 1u << 23);

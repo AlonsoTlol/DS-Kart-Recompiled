@@ -83,7 +83,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
 - 🧪 Linux (beta) — works, without a launcher window yet
-- 🔜 **Online play is not available yet.** It's coming soon, through community servers.
+- 🌐 **Online play (beta):** use the game's own **Nintendo WFC** menu (Worldwide, Continental, Rivals, Friends) for up to 4 players. It runs on our own small server (no Wiimmfi needed); races go directly between players. Some networks (CG-NAT, mobile data) may not connect.
 
 ## Credits
 
@@ -183,7 +183,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
 - 🧪 Linux (beta): funciona, todavía sin ventana de launcher
-- 🔜 **El online todavía no está disponible.** Llegará pronto, con servidores de la comunidad.
+- 🌐 **Online (beta):** usa el menú **Conexión Wi-Fi de Nintendo** del propio juego (Mundial, Continental, Con rival, Amigos) para hasta 4 jugadores. Funciona con nuestro propio servidor (sin Wiimmfi) y las carreras van directas entre jugadores. Algunas redes (CG-NAT, datos móviles) puede que no conecten.
 
 ## Créditos
 

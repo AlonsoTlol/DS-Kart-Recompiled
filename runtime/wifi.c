@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 typedef int SOCKET;
@@ -40,6 +41,7 @@ static int ioctlsocket(SOCKET s, long orden, u_long *v) {
 }
 #define GetCurrentProcessId getpid
 #endif
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +59,8 @@ static uint32_t buf7, estado, respuestas;  // los tres búferes que da INITIALIZ
 static int siguiente;
 static int traza = -1;
 
-enum { READY = 0, STOP = 1, IDLE = 2, SCAN = 5, CONNECT = 6, PARENT = 7, CHILD = 8, MP_PARENT = 9, MP_CHILD = 10 };
+enum { READY = 0, STOP = 1, IDLE = 2, SCAN = 5, CONNECT = 6, PARENT = 7, CHILD = 8, MP_PARENT = 9, MP_CHILD = 10,
+       DCF_CHILD = 11 };
 // lo que va en +8 de las respuestas de búsqueda y de anfitrión (WMStateCode)
 enum { PARENT_START = 0, PARENT_NOT_FOUND = 4, PARENT_FOUND = 5 };
 
@@ -73,9 +76,11 @@ static void responde_luego(uint32_t b, unsigned ms) {
 
 static void red_atiende(void);
 
+static void online_prueba(void);
+
 // Cada poco desde ds.c (actualiza), con el tiempo de la DS en milisegundos
 void wifi_actualiza(uint64_t ms) {
-    if (ms != ms_ahora) { ms_ahora = ms; red_atiende(); }
+    if (ms != ms_ahora) { ms_ahora = ms; red_atiende(); online_prueba(); }
     for (int i = 0; i < 8; i++)
         if (espera[i].buf && ms >= espera[i].cuando) {
             fifo_a_arm9((espera[i].buf << 6) | 10);
@@ -284,6 +289,8 @@ static void envia_retrasados(void) {
         }
 }
 
+static void envia_a_la_sala(const uint8_t *b, int n);  // online (más abajo)
+
 // A todas las redes del PC (la de casa, la de Radmin 26.x.x.x...) por difusión, y a LOCAL_IP si se puso
 static void envia_a_todos(const uint8_t *b, int n) {
     static uint32_t difusiones[16];
@@ -327,14 +334,308 @@ static void envia_a_todos(const uint8_t *b, int n) {
     struct sockaddr_in d = {0};
     d.sin_family = AF_INET;
     d.sin_port = htons(puerto_comun);
+    static int sin_difusion = -1;  // pruebas del online: MKDS_SIN_DIFUSION=1, solo se encuentran por la sala
+    if (sin_difusion < 0) sin_difusion = getenv("MKDS_SIN_DIFUSION") != NULL;
+    if (sin_difusion) nd = 0;
     for (int i = 0; i < nd; i++) {
         d.sin_addr.s_addr = htonl(difusiones[i]);
         envia(&d, b, n);
     }
     d.sin_addr.s_addr = htonl(0x7F000001);  // este mismo PC (dos copias para probar)
-    envia(&d, b, n);
+    if (!sin_difusion) envia(&d, b, n);
     const char *ip = getenv("MKDS_LOCAL_IP");  // LOCAL_IP en ajustes.ini: la IP del amigo (p. ej. la de Radmin)
     if (ip && *ip && inet_pton(AF_INET, ip, &d.sin_addr) == 1) envia(&d, b, n);
+    envia_a_la_sala(b, n);  // y a los de la sala del online, directos
+}
+
+
+// ---- online: salas por internet (servidor de salas: servidor/salas.js, un Worker de Cloudflare) ----------------
+// El modo local de la DS (hasta 8) por internet sin Radmin. El anfitrión crea una sala y el servidor le da un código;
+// los demás se unen con él. El servidor solo intercambia direcciones: la pública (la que ve internet de nuestro
+// socket propio, sacada con STUN) y la de la red de casa. Después cada uno manda HOLA al otro cada poco ("hole
+// punching": así los routers dejan pasar lo que llega de vuelta) y el anfitrión manda sus ANUNCIO también a ellos,
+// así que en el juego su grupo sale en la lista como si estuvieran en la misma red. Lo demás, igual que el modo local.
+// Con algunos routers (CG-NAT, datos móviles) no se puede: para esos sigue habiendo Radmin.
+// MKDS_SALAS_URL cambia el servidor (pruebas: http://127.0.0.1:8787 con "npx wrangler@3 dev").
+// Todo lo que habla con el servidor va en su propio hilo (hilo_online): las peticiones tardan.
+enum { HOLA = 8 };
+#define VERSION_ONLINE "1"  // subirla si cambia algo que haga que dos juegos distintos no puedan jugar juntos
+#define SALAS_URL "https://dskart-salas.alontubecontacto.workers.dev"
+int http_post(const char *url, char *r, int max);  // http.c
+
+typedef struct { struct sockaddr_in pub, loc; int hay_loc; } Par;
+static struct {
+    volatile int modo;       // 0 nada, 1 anfitrión, 2 invitado
+    volatile int pedido;     // del menú al hilo: 1 crear, 2 unirse, 3 salir
+    volatile int estado;     // lo que enseña el menú (ONL_...)
+    char codigo[8], clave[64], pedido_codigo[8];
+    Par pares[8];            // anfitrión: los invitados; invitado: [0] = el anfitrión
+    volatile int npares;
+    struct sockaddr_in pub, loc;
+    volatile int stun_ok;
+    uint8_t stun_id[12];
+    int hilo;
+} onl;
+enum { ONL_NADA, ONL_CONECTANDO, ONL_SIN_SERVIDOR, ONL_SIN_STUN, ONL_NO_EXISTE, ONL_VERSION, ONL_LLENA, ONL_EN_SALA,
+       ONL_UNIDO, ONL_CERRADA };
+static CRITICAL_SECTION cs_onl;  // la lista de los de la sala (la escribe hilo_online, la lee red_atiende)
+
+static void red_abre(void);
+
+// la IP de este PC en su red de casa (la primera privada que no sea la de Radmin, 26.x)
+static uint32_t ip_local(void) {
+    uint32_t mejor = 0;
+#ifdef _WIN32
+    ULONG tam = 16384;
+    IP_ADAPTER_ADDRESSES *ad = malloc(tam);
+    if (ad && GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+                                   NULL, ad, &tam) == NO_ERROR)
+        for (IP_ADAPTER_ADDRESSES *x = ad; x && !mejor; x = x->Next) {
+            if (x->OperStatus != IfOperStatusUp) continue;
+            for (IP_ADAPTER_UNICAST_ADDRESS *u = x->FirstUnicastAddress; u && !mejor; u = u->Next) {
+                uint32_t ip = ntohl(((struct sockaddr_in *)u->Address.lpSockaddr)->sin_addr.s_addr);
+                if ((ip >> 24) == 192 || (ip >> 24) == 10 || (ip >> 20) == 0xAC1) mejor = ip;
+            }
+        }
+    free(ad);
+#else
+    struct ifaddrs *lista;
+    if (!getifaddrs(&lista)) {
+        for (struct ifaddrs *x = lista; x && !mejor; x = x->ifa_next) {
+            if (!x->ifa_addr || x->ifa_addr->sa_family != AF_INET || (x->ifa_flags & IFF_LOOPBACK)) continue;
+            uint32_t ip = ntohl(((struct sockaddr_in *)x->ifa_addr)->sin_addr.s_addr);
+            if ((ip >> 24) == 192 || (ip >> 24) == 10 || (ip >> 20) == 0xAC1) mejor = ip;
+        }
+        freeifaddrs(lista);
+    }
+#endif
+    return mejor;
+}
+uint32_t wifi_ip_local(void) { return ip_local(); }  // para el túnel del WFC (wfc.c)
+
+// STUN (RFC 5389): una petición "binding" desde el socket propio; la respuesta la lee red_atiende (stun_llega)
+static int pide_stun(void) {
+    struct addrinfo pista = {0}, *res;
+    pista.ai_family = AF_INET;
+    pista.ai_socktype = SOCK_DGRAM;
+    const char *servidores[] = {"stun.l.google.com", "stun.cloudflare.com"};
+    const char *puertos[] = {"19302", "3478"};
+    for (int s = 0; s < 2; s++) {
+        if (getaddrinfo(servidores[s], puertos[s], &pista, &res)) continue;
+        for (int intento = 0; intento < 3 && !onl.stun_ok; intento++) {
+            uint8_t p[20] = {0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xA4, 0x42};
+            for (int i = 0; i < 12; i++) onl.stun_id[i] = p[8 + i] = (uint8_t)(rand() ^ (intento * 31 + i));
+            sendto(propio, (const char *)p, 20, 0, res->ai_addr, (int)res->ai_addrlen);
+            for (int t = 0; t < 20 && !onl.stun_ok; t++) Sleep(50);
+        }
+        freeaddrinfo(res);
+        if (onl.stun_ok) return 1;
+    }
+    return 0;
+}
+
+static int stun_llega(const uint8_t *b, int n) {  // 1 si era una respuesta de STUN (y la apunta)
+    if (n < 20 || b[0] != 0x01 || b[1] != 0x01 || memcmp(b + 4, "\x21\x12\xA4\x42", 4) || memcmp(b + 8, onl.stun_id, 12))
+        return 0;
+    for (int o = 20; o + 4 <= n;) {
+        int tipo = b[o] << 8 | b[o + 1], largo = b[o + 2] << 8 | b[o + 3];
+        if ((tipo == 0x0020 || tipo == 0x0001) && largo >= 8 && o + 4 + largo <= n && b[o + 5] == 1) {
+            uint16_t puerto = (uint16_t)(b[o + 6] << 8 | b[o + 7]);
+            uint32_t ip = (uint32_t)b[o + 8] << 24 | b[o + 9] << 16 | b[o + 10] << 8 | b[o + 11];
+            if (tipo == 0x0020) { puerto ^= 0x2112; ip ^= 0x2112A442; }  // XOR-MAPPED-ADDRESS
+            onl.pub.sin_family = AF_INET;
+            onl.pub.sin_port = htons(puerto);
+            onl.pub.sin_addr.s_addr = htonl(ip);
+            onl.stun_ok = 1;
+            return 1;
+        }
+        o += 4 + ((largo + 3) & ~3);
+    }
+    return 1;
+}
+
+static int pon_par(Par *p, const char *ip, int puerto, const char *ipl, int puertol) {
+    memset(p, 0, sizeof *p);
+    p->pub.sin_family = p->loc.sin_family = AF_INET;
+    if (inet_pton(AF_INET, ip, &p->pub.sin_addr) != 1 || puerto <= 0) return 0;
+    p->pub.sin_port = htons((uint16_t)puerto);
+    p->hay_loc = puertol > 0 && inet_pton(AF_INET, ipl, &p->loc.sin_addr) == 1;
+    p->loc.sin_port = htons((uint16_t)puertol);
+    return 1;
+}
+
+static char *pide(char *r, int max, const char *fmt, ...) {  // POST al servidor de salas; NULL si no contesta
+    char url[1024], ruta[768];
+    va_list a;
+    va_start(a, fmt);
+    vsnprintf(ruta, sizeof ruta, fmt, a);
+    va_end(a);
+    const char *base = getenv("MKDS_SALAS_URL");
+    snprintf(url, sizeof url, "%s%s", base && *base ? base : SALAS_URL, ruta);
+    int c = http_post(url, r, max);
+    if (traza) fprintf(stderr, "[online] %s -> %d %s", ruta, c, r);
+    return c < 0 ? NULL : r;
+}
+
+static void sala_empieza(int crear) {
+    onl.estado = ONL_CONECTANDO;
+    if (!red_lista) red_abre();
+    onl.stun_ok = 0;
+    if (!pide_stun()) { onl.estado = ONL_SIN_STUN; return; }
+    char ip[32], ipl[32] = "-", r[2048];
+    inet_ntop(AF_INET, &onl.pub.sin_addr, ip, sizeof ip);
+    uint32_t loc = ip_local();
+    if (loc) { struct in_addr a; a.s_addr = htonl(loc); inet_ntop(AF_INET, &a, ipl, sizeof ipl); }
+    if (crear) {
+        if (!pide(r, sizeof r, "/crear?ip=%s&puerto=%u&ipl=%s&puertol=%u&v=" VERSION_ONLINE, ip, ntohs(onl.pub.sin_port),
+                  ipl, loc ? puerto_propio : 0)) { onl.estado = ONL_SIN_SERVIDOR; return; }
+        char c[16] = "", k[80] = "";
+        const char *p = strstr(r, "codigo ");
+        if (p) sscanf(p, "codigo %15s", c);
+        p = strstr(r, "clave ");
+        if (p) sscanf(p, "clave %79s", k);
+        if (strlen(c) != 6 || !k[0]) { onl.estado = ONL_SIN_SERVIDOR; return; }
+        snprintf(onl.codigo, sizeof onl.codigo, "%s", c);
+        snprintf(onl.clave, sizeof onl.clave, "%s", k);
+        onl.npares = 0;
+        onl.modo = 1;
+        onl.estado = ONL_EN_SALA;
+    } else {
+        if (!pide(r, sizeof r, "/unirse?codigo=%s&ip=%s&puerto=%u&ipl=%s&puertol=%u&v=" VERSION_ONLINE, onl.pedido_codigo, ip,
+                  ntohs(onl.pub.sin_port), ipl, loc ? puerto_propio : 0)) { onl.estado = ONL_SIN_SERVIDOR; return; }
+        if (strstr(r, "error version")) { onl.estado = ONL_VERSION; return; }
+        if (strstr(r, "error llena")) { onl.estado = ONL_LLENA; return; }
+        char a[32], al[32];
+        int pa = 0, pl = 0;
+        const char *p = strstr(r, "anfitrion ");
+        if (!p || sscanf(p, "anfitrion %31s %d %31s %d", a, &pa, al, &pl) < 2) { onl.estado = ONL_NO_EXISTE; return; }
+        EnterCriticalSection(&cs_onl);
+        onl.npares = pon_par(&onl.pares[0], a, pa, al, pl);
+        LeaveCriticalSection(&cs_onl);
+        snprintf(onl.codigo, sizeof onl.codigo, "%s", onl.pedido_codigo);
+        onl.modo = 2;
+        onl.estado = ONL_UNIDO;
+    }
+}
+
+static void sala_latido(void) {  // anfitrión: sigo aquí, ¿quién ha entrado?
+    char r[4096];
+    if (!pide(r, sizeof r, "/latido?codigo=%s&clave=%s", onl.codigo, onl.clave)) return;  // sin conexión: se reintenta
+    if (strstr(r, "error sala")) { onl.modo = 0; onl.npares = 0; onl.estado = ONL_CERRADA; return; }
+    Par nuevos[8];
+    int n = 0;
+    for (const char *p = strstr(r, "invitado "); p && n < 8; p = strstr(p + 1, "invitado ")) {
+        char a[32], al[32];
+        int pa = 0, pl = 0;
+        if (sscanf(p, "invitado %31s %d %31s %d", a, &pa, al, &pl) >= 2 && pon_par(&nuevos[n], a, pa, al, pl)) n++;
+    }
+    EnterCriticalSection(&cs_onl);
+    memcpy(onl.pares, nuevos, sizeof nuevos);
+    onl.npares = n;
+    LeaveCriticalSection(&cs_onl);
+}
+
+static DWORD WINAPI hilo_online(LPVOID arg) {
+    (void)arg;
+    uint64_t ultimo = 0;
+    for (;;) {
+        int p = onl.pedido;
+        if (p) {
+            onl.pedido = 0;
+            if (onl.modo == 1) { char r[256]; pide(r, sizeof r, "/cerrar?codigo=%s&clave=%s", onl.codigo, onl.clave); }
+            onl.modo = 0;
+            onl.npares = 0;
+            onl.estado = ONL_NADA;
+            if (p == 1 || p == 2) sala_empieza(p == 1);
+            ultimo = GetTickCount();
+        }
+        uint64_t ahora = GetTickCount();
+        if (onl.modo == 1 && ahora - ultimo >= 1000) { ultimo = ahora; sala_latido(); }
+        if (onl.modo == 2 && ahora - ultimo >= 5000) {  // invitado: sigo aquí
+            ultimo = ahora;
+            char r[256], ip[32];
+            inet_ntop(AF_INET, &onl.pub.sin_addr, ip, sizeof ip);
+            pide(r, sizeof r, "/sigo?codigo=%s&ip=%s&puerto=%u", onl.codigo, ip, ntohs(onl.pub.sin_port));
+        }
+        Sleep(100);
+    }
+    return 0;
+}
+
+static void online_pide(int que) {
+    if (!onl.hilo) {
+        onl.hilo = 1;
+        InitializeCriticalSection(&cs_onl);
+        CreateThread(NULL, 0, hilo_online, NULL, 0, NULL);
+    }
+    onl.pedido = que;
+}
+
+// para el menú (menu.cpp)
+void online_crear(void) { online_pide(1); }
+void online_unirse(const char *codigo) {
+    int k = 0;
+    for (const char *p = codigo; *p && k < 6; p++)
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9'))
+            onl.pedido_codigo[k++] = (char)(*p >= 'a' && *p <= 'z' ? *p - 32 : *p);
+    onl.pedido_codigo[k] = 0;
+    online_pide(2);
+}
+void online_salir(void) { online_pide(3); }
+int online_estado(char *codigo, int *jugadores) {
+    if (codigo) snprintf(codigo, 8, "%s", onl.codigo);
+    if (jugadores) *jugadores = onl.npares;
+    return onl.estado;
+}
+
+// pruebas sin tocar el menú: MKDS_ONLINE_CREAR=archivo crea una sala y escribe su código en ese archivo;
+// MKDS_ONLINE_UNIRSE=código (o @archivo, cuando exista) se une
+static void online_prueba(void) {
+    static int hecho;
+    if (hecho == 2 || ms_ahora < 1500) return;
+    const char *c = getenv("MKDS_ONLINE_CREAR"), *u = getenv("MKDS_ONLINE_UNIRSE");
+    if (!c && !u) { hecho = 2; return; }
+    if (c && !hecho) { hecho = 1; online_crear(); }
+    if (c && hecho == 1 && onl.estado == ONL_EN_SALA) {
+        FILE *f = fopen(c, "w");
+        if (f) { fprintf(f, "%s\n", onl.codigo); fclose(f); }
+        hecho = 2;
+    }
+    if (u && !hecho) {
+        char codigo[16] = "";
+        if (u[0] == '@') {
+            FILE *f = fopen(u + 1, "r");
+            if (!f) return;
+            if (fscanf(f, "%15s", codigo) != 1) codigo[0] = 0;
+            fclose(f);
+        } else snprintf(codigo, sizeof codigo, "%s", u);
+        if (strlen(codigo) == 6) { online_unirse(codigo); hecho = 2; }
+    }
+}
+
+// cada poco desde red_atiende: HOLA a los de la sala (abre el camino por los routers y lo mantiene abierto)
+static void online_hola(void) {
+    static uint64_t ultimo;
+    if (!onl.modo || ms_ahora - ultimo < 400) return;
+    ultimo = ms_ahora;
+    uint8_t b[32];
+    int n = cabecera(b, HOLA);
+    EnterCriticalSection(&cs_onl);
+    for (int i = 0; i < onl.npares; i++) {
+        envia(&onl.pares[i].pub, b, n);
+        if (onl.pares[i].hay_loc) envia(&onl.pares[i].loc, b, n);
+    }
+    LeaveCriticalSection(&cs_onl);
+}
+
+static void envia_a_la_sala(const uint8_t *b, int n) {
+    if (onl.modo != 1) return;
+    EnterCriticalSection(&cs_onl);
+    for (int i = 0; i < onl.npares; i++) {
+        envia(&onl.pares[i].pub, b, n);
+        if (onl.pares[i].hay_loc) envia(&onl.pares[i].loc, b, n);
+    }
+    LeaveCriticalSection(&cs_onl);
 }
 
 static void anuncia(void) {
@@ -605,9 +906,15 @@ int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe) {
     return 0;
 }
 
+static uint32_t dcf_recibe;  // (más abajo: la Conexión Wi-Fi de Nintendo)
+static void entrega_dcf(void);
+void wfc_atiende(uint64_t ms);
+
 static void red_atiende(void) {
+    if (dcf_recibe) { wfc_atiende(ms_ahora); entrega_dcf(); }  // la Conexión Wi-Fi de Nintendo (no usa lo de abajo)
     if (!red_lista) return;
     if (retraso_ms > 0) envia_retrasados();
+    online_hola();
     static uint64_t ultimo_anuncio;
     int st = estado ? lee16(estado) : 0;
     if ((st == PARENT || st == MP_PARENT) && param_padre && ms_ahora - ultimo_anuncio >= 300) {
@@ -629,12 +936,13 @@ static void red_atiende(void) {
             int l = sizeof de;
             int n = recvfrom(ss[k], (char *)b, sizeof b, 0, (struct sockaddr *)&de, &l);
             if (n < 14) break;
+            if (k == 1 && stun_llega(b, n)) continue;  // la respuesta de STUN (online)
             if (memcmp(b, "DSKR", 4) || !memcmp(b + 8, mi_mac, 6)) continue;  // no es nuestro, o soy yo
-            uint16_t su_puerto;
-            memcpy(&su_puerto, b + 6, 2);
-            de.sin_port = htons(su_puerto);  // se le contesta a su socket propio
+            // se contesta a la dirección desde la que llega (con un router en medio, el puerto no es el suyo)
             const uint8_t *mac = b + 8;
             switch (b[4]) {
+            case HOLA:
+                break;
             case ANUNCIO: {
                 if (n < 14 + 0x40 + 1) break;
                 int g = -1;
@@ -779,6 +1087,72 @@ static void pon_bss(uint32_t d, const Grupo *G, uint16_t ch) {
     memcpy(p + 0x50, G->info, (size_t)G->info_largo);
 }
 
+// ---- Conexión Wi-Fi de Nintendo: el punto de acceso de casa, imitado ------------------------------------------
+// En la DS, el WFC entra por un punto de acceso (los "Ajustes de la CWF" del firmware: ds.c, prepara_wfc). Aquí hay
+// uno solo, "DSKartRecompiled" (el SSID que pone el firmware), que sale en todas las búsquedas y acepta siempre.
+static const uint8_t mac_ap[6] = {0x02, 0x44, 0x53, 0x4B, 0x52, 0x01};  // "DSKR", administrada localmente
+#define CANAL_AP 1
+static int con_ap;  // conectados al punto de acceso (modo infraestructura)
+static uint32_t dcf_recibe, dcf_recibe_tam;  // búfer de recepción que dio START_DCF
+void wfc_envia(const uint8_t *trama, int n);       // wfc.c: lo que manda la DS
+int wfc_recibe(uint8_t *trama, int max);            // wfc.c: lo siguiente para la DS (0 si nada)
+void wfc_atiende(uint64_t ms);
+
+// Entrega a la DS los paquetes que tenga wfc.c (aviso de START_DCF con estado 15 y el WMDcfRecvBuf: +6 largo,
+// +18 destino, +1E origen, +2C datos). Cada uno en uno de los búferes 0 y 1 del "ARM7" y su mitad del de recepción.
+static void entrega_dcf(void) {
+    static uint8_t t[2048];
+    static int pendiente;
+    while (dcf_recibe && buf7) {
+        if (!pendiente) pendiente = wfc_recibe(t, sizeof t);
+        if (!pendiente) return;
+        int k = -1;
+        for (int i = 0; i < 2 && k < 0; i++) if (lee16(buf7 + 0x100u * (uint32_t)i) & 0x8000) k = i;
+        if (k < 0) return;
+        uint32_t mitad = dcf_recibe_tam / 2 & ~3u;
+        if ((uint32_t)pendiente + 0x2C > mitad) {  // no cabe: se pierde
+            if (traza > 0) fprintf(stderr, "[wifi] trama de %d bytes para la DS: no cabe en su búfer (%u), se pierde\n",
+                               pendiente, mitad);
+            pendiente = 0;
+            continue;
+        }
+        uint32_t z = dcf_recibe + mitad * (uint32_t)k;
+        uint8_t *r = g_main + (z & 0x3FFFFF);
+        memset(r, 0, 0x2C);
+        uint16_t v = (uint16_t)pendiente;
+        memcpy(r + 6, &v, 2);
+        v = 0x2000; memcpy(r + 0xE, &v, 2);  // calidad de la señal
+        memcpy(r + 0x18, mi_mac, 6);
+        memcpy(r + 0x1E, mac_ap, 6);
+        memcpy(r + 0x2C, t, (size_t)pendiente);
+        uint32_t c = buf7 + 0x100u * (uint32_t)k;
+        memset(g_main + (c & 0x3FFFFF), 0, 0x100);
+        pon16(c, 0x11);
+        pon16(c + 4, 15);
+        pon32(c + 8, z);
+        responde(c);
+        pendiente = 0;
+    }
+}
+
+// WMBssDesc de un punto de acceso normal (sin WMGameInfo)
+static void pon_bss_ap(uint32_t d, uint16_t ch) {
+    uint8_t *p = g_main + (d & 0x3FFFFF);
+    memset(p, 0, 0x40);
+    uint16_t v;
+    v = 0x40 / 2; memcpy(p + 0x00, &v, 2);   // largo en medias palabras
+    v = 50; memcpy(p + 0x02, &v, 2);         // señal
+    memcpy(p + 0x04, mac_ap, 6);
+    v = 16; memcpy(p + 0x0A, &v, 2);
+    memcpy(p + 0x0C, "DSKartRecompiled", 16);
+    v = 0x0001; memcpy(p + 0x2C, &v, 2);     // capacidades: ESS (punto de acceso), sin cifrado
+    v = 0x0003; memcpy(p + 0x2E, &v, 2);     // velocidades básicas 1 y 2 Mbps
+    memcpy(p + 0x30, &v, 2);
+    v = 100; memcpy(p + 0x32, &v, 2);        // periodo de las balizas
+    v = 1; memcpy(p + 0x34, &v, 2);          // DTIM
+    memcpy(p + 0x36, &ch, 2);
+}
+
 // Respuesta corta (WMCallback): apiid, error, wlCmdID, wlResult
 static void responde_simple(int api, int error) {
     uint32_t b = bufer_respuesta();
@@ -823,7 +1197,15 @@ int wifi_orden(uint32_t dir) {
         pon_estado(READY);
         responde_simple(api, 0);
         break;
-    case 0x03: case 0x05:  // ENABLE, POWER_ON
+    case 0x03:  // ENABLE: como INITIALIZE sin encender (la Conexión Wi-Fi de Nintendo lo hace por partes)
+        if ((p[0] & 0xFF000000) == 0x02000000) {
+            buf7 = p[0]; estado = p[1]; respuestas = p[2];
+            for (int i = 0; i < 3; i++) pon16(buf7 + 0x100u * (uint32_t)i, 0x8000);
+        }
+        pon_estado(STOP);
+        responde_simple(api, 0);
+        break;
+    case 0x05:  // POWER_ON
         pon_estado(IDLE);
         responde_simple(api, 0);
         break;
@@ -863,8 +1245,74 @@ int wifi_orden(uint32_t dir) {
         responde_luego(b, ms);
         break;
     }
+    case 0x11: {  // START_DCF (+4 búfer de recepción, +8 su tamaño): ya conectados al punto de acceso, la DS manda y
+        // recibe paquetes de red (wfc.c hace de router). Respuesta (021A4F10): +4 estado 14 (empieza)
+        dcf_recibe = p[0];
+        dcf_recibe_tam = p[1];
+        pon_estado(DCF_CHILD);   // si no, SET_DCF_DATA no deja enviar nada (y el WCM acaba desconectando: error 710)
+        pon32(estado + 0x10, 1);  // dcf_flag (WM_SetDCFData lo mira, 02144484)
+        uint32_t c = bufer_respuesta();
+        pon16(c, (uint16_t)api);
+        pon16(c + 4, 14);
+        responde_luego(c, 2);  // no al momento: el WCM se pone a esperarla después de mandar la orden (si no, error 710)
+        break;
+    }
+    case 0x12: {  // SET_DCF_DATA: +4 MAC de destino (6 bytes), +C datos, +10 largo (lo de dentro de la trama 802.11)
+        uint32_t datos = p[2];
+        int largo = (int)(p[3] & 0xFFFF);
+        if ((datos & 0xFF000000) == 0x02000000 && largo > 0 && largo <= 2048)
+            wfc_envia(g_main + (datos & 0x3FFFFF), largo);
+        responde_simple(api, 0);
+        break;
+    }
+    case 0x13:  // END_DCF
+        dcf_recibe = 0;
+        pon_estado(CHILD);
+        pon32(estado + 0x10, 0);
+        responde_simple(api, 0);
+        break;
+    case 0x26: {  // START_SCAN_EX (la búsqueda de puntos de acceso del WFC): +2 canales (bit por canal), +4 dónde
+        // dejar los WMBssDesc, +8 cuánto cabe, +A cuánto escuchar (ms), +C BSSID, +12 tipo, +14 SSID
+        // Respuesta (WMStartScanExCallback; leída en 021A52B0): +8 estado (4 nadie, 5 encontrado), +A canales,
+        // +E cuántos, +10 los WMBssDesc (punteros), +50 la calidad de cada uno
+        uint16_t canales = lee16(dir + 2);
+        unsigned ms = lee16(dir + 0xA);
+        if (ms < 10) ms = 10;
+        if (ms > 500) ms = 500;
+        pon_estado(SCAN);
+        uint32_t b = bufer_respuesta();
+        pon16(b, (uint16_t)api);
+        pon16(b + 8, PARENT_NOT_FOUND);
+        pon16(b + 0xA, canales);
+        uint32_t bss = p[0];
+        if ((bss & 0xFF000000) == 0x02000000 && (canales & (1u << (CANAL_AP - 1)))) {
+            pon_bss_ap(bss, CANAL_AP);
+            pon16(b + 8, PARENT_FOUND);
+            pon16(b + 0xE, 1);
+            pon32(b + 0x10, bss);
+            pon16(b + 0x50, 3);
+            if (traza) fprintf(stderr, "[wifi] WFC: punto de acceso DSKartRecompiled encontrado\n");
+        }
+        responde_luego(b, ms);
+        break;
+    }
     case 0x0C: {  // START_CONNECT: +4 WMBssDesc del grupo elegido, +8 24 bytes del invitado
         uint32_t bss = p[0];
+        if ((bss & 0xFF000000) == 0x02000000 && !memcmp(g_main + ((bss + 4) & 0x3FFFFF), mac_ap, 6)) {
+            // el punto de acceso del WFC: entra siempre (estado 7, conectado; aid en +A y su MAC en +C)
+            con_ap = 1;
+            pon_estado(CHILD);
+            pon16(estado + ST_AID, 1);
+            uint32_t c = bufer_respuesta();
+            pon16(c, 0x0C);
+            pon16(c + 8, 7);
+            pon16(c + 0xA, 1);
+            memcpy(g_main + ((c + 0xC) & 0x3FFFFF), mac_ap, 6);
+            pon16(c + 0x10, 1);
+            responde(c);
+            if (traza) fprintf(stderr, "[wifi] WFC: conectado al punto de acceso\n");
+            break;
+        }
         Grupo *G = NULL;
         for (int i = 0; i < 4; i++)
             if (grupos[i].visto && !memcmp(grupos[i].mac, g_main + ((bss + 4) & 0x3FFFFF), 6)) G = &grupos[i];
@@ -984,7 +1432,7 @@ int wifi_orden(uint32_t dir) {
         responde(c);
         break;
     }
-    case 0x18: case 0x19: case 0x1D: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25:
+    case 0x18: case 0x19: case 0x1D: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x27: case 0x28:
         // SET_GAMEINFO, SET_BEACON_IND, SET_LIFETIME, SET_ENTRY, AUTO_DEAUTH, SET_MP_PARAMETER,
         // SET_BEACON_PERIOD, AUTO_DISCONNECT: de momento basta con decir que sí
         responde_simple(api, 0);

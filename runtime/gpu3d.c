@@ -758,13 +758,22 @@ static void triangulo(const PP *p, const VP *A, const VP *B, const VP *C, int yb
         l1 += l1x * (float)(xi - xa);
         for (int x = xi; x <= xf; x++, l0 += l0x, l1 += l1x) {
             int i = y * AN + x;
-            float w = 1.0f / (iwC + l0 * iwA + l1 * iwB);
+            // Con un vértice pegado a la cámara (1/w enorme) y los demás lejos, en el borde (eps) esto puede dar ~0 o
+            // negativo: w y los colores se disparan. Eso ya está fuera del triángulo: no se pinta (el juego se
+            // cerraba al atravesar al Rey Boo en su misión: con la cámara dentro, el índice de la tabla toon salía
+            // negativo y se leía fuera de la memoria)
+            float iwp = iwC + l0 * iwA + l1 * iwB;
+            if (!(iwp > 0)) continue;
+            float w = 1.0f / iwp;
             // w-buffer: w no es lineal en pantalla (1/w sí), así que se usa el w ya corregido
             uint32_t zi = tj->wbuf ? (uint32_t)(w * 0x1000) : (uint32_t)((zC + l0 * zA + l1 * zB) * 0xFFFFFF);
             if (p->prof_igual ? (zi > prof_buf[i] + 0x200 || zi + 0x200 < prof_buf[i]) : zi >= prof_buf[i]) continue;
             int vr = (int)((rC + l0 * rA + l1 * rB) * w * 2 + 0.5f);
             int vg = (int)((gC + l0 * gA + l1 * gB) * w * 2 + 0.5f);
             int vb = (int)((bC + l0 * bA + l1 * bB) * w * 2 + 0.5f);
+            vr = vr < 0 ? 0 : vr > 63 ? 63 : vr;  // como la consola: 0..63 (y la tabla toon solo tiene 32)
+            vg = vg < 0 ? 0 : vg > 63 ? 63 : vg;
+            vb = vb < 0 ? 0 : vb > 63 ? 63 : vb;
             int cr = vr, cg = vg, cb = vb, ca = va;
             if (modo == 2) {  // toon / resaltado: tabla según el rojo
                 uint32_t o = 0x380 + (uint32_t)(vr >> 1) * 2;

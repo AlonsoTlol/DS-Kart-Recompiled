@@ -30,3 +30,4 @@ typedef struct {
     uint32_t off_estado, off_enlace, off_sig;  // campos del hilo (estado, enlaces de cola, siguiente)
 } SoConfig;
 extern SoConfig g_so[2];
+extern int g_sin_irq[2];  // >0: no entregar interrupciones (hilos.c, mientras guarda o carga un contexto)

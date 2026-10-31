@@ -313,6 +313,9 @@ class Recomp:
                         fn.calls.add((f.target, thumb))
                     else:
                         todo.append(f.target)
+                elif k == "call" and thumb and f.tthumb and "blsalto" not in VIEJO and self.bl_es_salto(f.target):
+                    f.kind = "branch"  # un salto dentro de la función, no una llamada
+                    todo.append(f.target)
                 elif k in ("call", "tail"):
                     fn.calls.add((f.target, f.tthumb))
                 elif k == "jumpind":
@@ -371,6 +374,29 @@ class Recomp:
         if fn.dynsites and "todos" in NUEVO:
             fn.dyn_targets |= set(fn.ins)
         return fn
+
+    def bl_es_salto(self, t):
+        """En funciones Thumb muy largas (más de 4 KB) el compilador de Nintendo usa BL como salto lejano dentro
+        de la propia función (un B solo llega a ±2 KB): p. ej. el overlay 0 (GameSpy) salta así a su epílogo.
+        Traducido como llamada, ese trozo era otra "función" que al volver sacaba de la pila la vuelta de la de
+        fuera y no la suya: el juego acababa en "falta código" en la vuelta de quien llamó (y así hacia arriba).
+        Se reconoce porque, siguiendo el código desde el destino, deshace un marco de pila (pop {pc}, o pop {rX}
+        + bx rX) sin haber hecho push antes; una función de verdad empieza con push o, si es hoja, acaba en bx lr."""
+        a = t
+        for _ in range(128):
+            if not self.img.has(a, 2):
+                return False
+            i = self.img.u16(a)
+            if (i & 0xFE00) == 0xB400 or i == 0x4770:  # push, bx lr
+                return False
+            if (i & 0xFF00) == 0xBD00:  # pop {.., pc}
+                return True
+            if (i & 0xFF87) == 0x4700 and a > t and (self.img.u16(a - 2) & 0xFF00) == 0xBC00 and (self.img.u16(a - 2) >> ((i >> 3) & 15)) & 1:
+                return True  # pop {rX} + bx rX
+            if (i & 0xFF87) == 0x4700 or (i & 0xFF00) == 0xDF00:  # otro bx, swi: no se sabe
+                return False
+            a += 4 if (i & 0xF800) == 0xF000 else 2
+        return False
 
     def casos_switch_arm(self, d):
         """Destinos de un switch ARM 'addls pc, pc, rX, lsl #2' (tabla de saltos detrás) o 'ldrls pc,
@@ -1200,6 +1226,8 @@ class Gen:
             return self.branch(f, a)
         if f.kind == "call":
             return self.call(f, (a + 4) | 1)
+        if f.kind == "branch":  # BL usado como salto largo dentro de la función (ver Recomp.bl_es_salto)
+            return [f"R[14] = {h((a + 4) | 1)};"] + self.branch(f, a)
         return [f"cpu_undefined(c, {h(a)}, {h(i)});"]
 
 

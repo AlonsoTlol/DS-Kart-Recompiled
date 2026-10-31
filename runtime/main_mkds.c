@@ -47,6 +47,23 @@ int truco_jefe_mision(Cpu *c) {
 void wifi_ds_empieza(uint32_t info);
 int wifi_ds_paso(uint32_t info, uint32_t envio, uint32_t recibe);
 
+// Conexión Wi-Fi de Nintendo: con MKDS_WIFI_LOG apunta cada cambio de fase del WCM (021A57FC) y quién lo pide
+int traza_wcm_fase(Cpu *c) {
+    static int log = -1;
+    if (log < 0) log = getenv("MKDS_WIFI_LOG") != NULL;
+    if (log) fprintf(stderr, "[wcm] fase %u (desde %08X, %lu ms)\n", c->r[0], c->r[14], (unsigned long)GetTickCount());
+    return 0;
+}
+
+int traza_llamada(Cpu *c) {  // DEPURA_O0 (traducir_mkds.py): una llamada, con sus argumentos
+    static int log = -1;
+    if (log < 0) log = getenv("MKDS_WIFI_LOG") != NULL;
+    if (log)
+        fprintf(stderr, "[llamada] %08X(%08X, %08X, %08X, %08X) desde %08X\n", c->func & ~1u, c->r[0], c->r[1], c->r[2],
+                c->r[3], c->r[14]);
+    return 0;
+}
+
 int gancho_ds_empieza(Cpu *c) {  // WM_StartDataSharing: se anota y sigue el original
     wifi_ds_empieza(c->r[0]);
     return 0;
@@ -148,17 +165,32 @@ static LONG WINAPI al_romperse(EXCEPTION_POINTERS *e) {
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            (LPCSTR)dir, &mod))
         GetModuleFileNameA(mod, nombre, MAX_PATH);
-    fprintf(stderr, "\n[mkds] fallo %08lX en el PC (%s+%llX)\n", e->ExceptionRecord->ExceptionCode,
-            strrchr(nombre, '\\') ? strrchr(nombre, '\\') + 1 : nombre, (unsigned long long)((char *)dir - (char *)mod));
+    char txt[512];
+    int k = snprintf(txt, sizeof txt, "[mkds] fallo %08lX en el PC (%s+%llX)\n", e->ExceptionRecord->ExceptionCode,
+                     strrchr(nombre, '\\') ? strrchr(nombre, '\\') + 1 : nombre, (unsigned long long)((char *)dir - (char *)mod));
 #ifdef _M_X64
     {  // la pila del hilo que falló: direcciones de vuelta que caen dentro de mkds.exe
         char *base = (char *)GetModuleHandle(NULL), **pila = (char **)e->ContextRecord->Rsp;
-        fprintf(stderr, "    llamadas en mkds.exe:");
-        for (int i = 0, n = 0; i < 4096 && n < 12; i++)
-            if (pila[i] > base && pila[i] < base + 0x8000000) { fprintf(stderr, " +%llX", (unsigned long long)(pila[i] - base)); n++; }
-        fprintf(stderr, "\n");
+        k += snprintf(txt + k, sizeof txt - (size_t)k, "    llamadas en mkds.exe:");
+        for (int i = 0, n = 0; i < 4096 && n < 12 && k < (int)sizeof txt - 24; i++)
+            if (pila[i] > base && pila[i] < base + 0x8000000) {
+                k += snprintf(txt + k, sizeof txt - (size_t)k, " +%llX", (unsigned long long)(pila[i] - base));
+                n++;
+            }
+        snprintf(txt + k, sizeof txt - (size_t)k, "\n");
     }
 #endif
+    fprintf(stderr, "\n%s", txt);
+    {  // también en fallos.txt, junto al juego: desde el launcher no se ve la salida de errores (para los issues)
+        FILE *f = fopen("fallos.txt", "a");
+        if (f) {
+            SYSTEMTIME t;
+            GetLocalTime(&t);
+            fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d  ARM9 en %08X  ARM7 en %08X\n%s\n", t.wYear, t.wMonth, t.wDay,
+                    t.wHour, t.wMinute, t.wSecond, g_cpu9.r[15], g_cpu7.r[15], txt);
+            fclose(f);
+        }
+    }
     volcado(&g_cpu9);
     volcado(&g_cpu7);
     fflush(stderr);
@@ -168,6 +200,11 @@ static LONG WINAPI al_romperse(EXCEPTION_POINTERS *e) {
 #include <signal.h>
 static void al_romperse(int sen) {
     fprintf(stderr, "\n[mkds] fallo en el PC (señal %d)\n", sen);
+    FILE *f = fopen("fallos.txt", "a");  // como en Windows: para los issues
+    if (f) {
+        fprintf(f, "[mkds] fallo en el PC (señal %d)  ARM9 en %08X  ARM7 en %08X\n\n", sen, g_cpu9.r[15], g_cpu7.r[15]);
+        fclose(f);
+    }
     volcado(&g_cpu9);
     volcado(&g_cpu7);
     fflush(stderr);

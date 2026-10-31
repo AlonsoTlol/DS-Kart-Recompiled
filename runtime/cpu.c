@@ -30,8 +30,14 @@ static Func buscar_ov(uint32_t key) {
     return NULL;
 }
 
+// Los últimos saltos calculados del ARM9 (desde qué función, a dónde, r14 y r13), para entender un "falta código"
+static struct { uint32_t desde, a, lr, sp; } ultimos[32];
+static unsigned n_ultimos;
+
 void dispatch(Cpu *c, uint32_t t) {
     uint32_t key = (t & 1) ? t : (t & ~3u);
+    unsigned k = n_ultimos++ & 31;
+    ultimos[k].desde = c->func; ultimos[k].a = t; ultimos[k].lr = c->r[14]; ultimos[k].sp = c->r[13];
     Func f = buscar(g_funcs, g_nfuncs, key);
     if (!f) f = buscar_ov(key);
     if (!f) cpu_missing(c, key);
@@ -60,6 +66,12 @@ _Noreturn void cpu_missing(Cpu *c, uint32_t addr) {
     fprintf(stderr, "\n[recomp] falta código traducido del %s en %08X (%s)\n", c->id ? "ARM7" : "ARM9",
             addr & ~1u, (addr & 1) ? "Thumb" : "ARM");
     volcado(c);
+    if (!c->id) {
+        fprintf(stderr, "  últimos saltos calculados (desde -> a, r14, r13):\n");
+        for (unsigned i = n_ultimos > 32 ? n_ultimos - 32 : 0; i < n_ultimos; i++)
+            fprintf(stderr, "    %08X -> %08X  lr %08X  sp %08X\n", ultimos[i & 31].desde, ultimos[i & 31].a,
+                    ultimos[i & 31].lr, ultimos[i & 31].sp);
+    }
     fprintf(stderr, "  en memoria:");
     for (int i = 0; i < 8; i++) fprintf(stderr, " %04X", c->id ? rd16_7((addr & ~1u) + i * 2) : rd16_9((addr & ~1u) + i * 2));
     fprintf(stderr, "\n");

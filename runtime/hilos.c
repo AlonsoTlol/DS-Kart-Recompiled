@@ -53,11 +53,17 @@ void **hle_ctx_buf(Cpu *c, uint32_t ctx) {
     return NULL;  // ya no se usa setjmp (ver entra())
 }
 
+// Guardar/cargar el estado del divisor y la raíz (CP_SaveContext / CP_RestoreContext del juego). Sin
+// interrupciones mientras tanto, como en la consola: si llegaba una aquí dentro (esperando al divisor) y cambiaba
+// de hilo, se guardaba un contexto a medio cargar y ese hilo volvía después con la pila de otro
+// (con los 8 hilos del DWC en la búsqueda de partida de la CWF: "falta código" en 0200DF24)
 static void llama(Cpu *c, uint32_t func, uint32_t r0) {
     if (!func) return;
     uint32_t lr = c->r[14];
     c->r[0] = r0;
+    g_sin_irq[c->id]++;
     cpu_llama(c, func);
+    g_sin_irq[c->id]--;
     c->r[14] = lr;
 }
 
