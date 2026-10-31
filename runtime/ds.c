@@ -841,6 +841,8 @@ static uint8_t spi_byte(uint8_t b) {
         case 0x9F: return pos == 1 ? 0x20 : pos == 2 ? 0x40 : 0x12;
         case 0x0A: case 0x02:  // escribir página
             if (pos <= 3) { spi.dir = (spi.dir << 8) | b; return 0; }
+            if (pos == 4 && getenv("MKDS_WIFI_LOG"))
+                fprintf(stderr, "[firmware] escritura (%02X) en %05X%s\n", spi.cmd, spi.dir & 0x3FFFF, spi.wel ? "" : " SIN PERMISO");
             if (spi.wel) {
                 uint32_t d = spi.dir & 0x3FF00 | (spi.dir & 0xFF);
                 firmware[d] = b;
@@ -922,6 +924,21 @@ static void guarda_wfc(void) {
     wfc_cambiado = 0;
     FILE *f = fopen("wfc.bin", "wb");
     if (f) { fwrite(firmware + WFC_INI, 1, WFC_TAM, f); fclose(f); }
+}
+
+// El ID de la CWF de esta "consola" (+F0 del primer ajuste, 43 bits). En la DS lo dejaba el servidor de Nintendo
+// al crear la cuenta; con el nuestro el juego lo guardaba en la tarjeta pero en el firmware se quedaba a 0, y la
+// siguiente vez decía que el de la consola y el de la tarjeta no coinciden. Lo pone wfc_servicios.c al iniciar sesión.
+void wfc_firmware_pon_id(uint64_t id) {
+    uint8_t *a = firmware + WFC_INI;
+    uint64_t viejo = 0;
+    for (int i = 0; i < 6; i++) viejo |= (uint64_t)a[0xF0 + i] << (8 * i);
+    if ((viejo & 0x7FFFFFFFFFFull) == (id & 0x7FFFFFFFFFFull)) return;
+    for (int i = 0; i < 6; i++) a[0xF0 + i] = (uint8_t)(id >> (8 * i));
+    uint16_t c = crc16(0, a, 0xFE);
+    memcpy(a + 0xFE, &c, 2);
+    wfc_cambiado = 1;
+    guarda_wfc();
 }
 
 // Un firmware inventado con los ajustes de la consola (nombre, idioma, táctil)

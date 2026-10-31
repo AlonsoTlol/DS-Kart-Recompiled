@@ -632,6 +632,8 @@ static void pestaña_online(void) {
     ayuda(T("Escribe el código de 6 letras que te pase el que creó la sala."));
 }
 
+extern "C" int wfc_ping_ms(void);  // wfc.c: el ping con los rivales del online (-1 si no hay)
+
 static void contador_fps(float W, float s) {
     ImGui::SetNextWindowPos(ImVec2(W - 12 * s, 12 * s), ImGuiCond_Always, ImVec2(1, 0));
     ImGui::SetNextWindowBgAlpha(0.6f);
@@ -640,14 +642,17 @@ static void contador_fps(float W, float s) {
     ImGui::Begin("##fps", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                  ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
     ImGui::SetWindowFontScale(0.75f);
-    ImGui::Text("%d FPS", fps_pantalla);  // lo que se ve por segundo (con las imágenes intermedias)
+    int ping = wfc_ping_ms();
+    if (aj.mostrar_fps && ping >= 0) ImGui::Text("%d FPS  |  %d ms", fps_pantalla, ping);
+    else if (ping >= 0) ImGui::Text("%d ms", ping);  // jugando online: el ping aunque no se enseñen los FPS
+    else ImGui::Text("%d FPS", fps_pantalla);  // lo que se ve por segundo (con las imágenes intermedias)
     ImGui::End();
     ImGui::PopStyleVar(2);
 }
 
 extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
     if (!listo || ancho <= 0 || alto <= 0) return;
-    if (!abierto && !aj.mostrar_fps) return;
+    if (!abierto && !aj.mostrar_fps && wfc_ping_ms() < 0) return;
     ImGuiIO &io = ImGui::GetIO();
     static double antes;
     double ahora = reloj_s();
@@ -661,7 +666,7 @@ extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
     vacia_cola();
     ImGui_ImplOpenGL2_NewFrame();
     ImGui::NewFrame();
-    if (aj.mostrar_fps) contador_fps((float)ancho, s);
+    if (aj.mostrar_fps || wfc_ping_ms() >= 0) contador_fps((float)ancho, s);
     if (abierto) {
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(5, 6, 15, 165));
         float w = 640 * s, h = 560 * s;

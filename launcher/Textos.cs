@@ -41,6 +41,9 @@ static class Textos {
         A("GRÁFICOS", "GRAPHICS", "GRAPHISMES", "GRAFIK", "GRAFICA");
         A("MODO", "MODE", "MODE", "MODUS", "MODALITÀ");
         A("JUGADOR", "PLAYER", "JOUEUR", "SPIELER", "GIOCATORE");
+        A("EN LÍNEA", "ONLINE", "EN LIGNE", "ONLINE", "ONLINE");
+        A("{0} jugando", "{0} playing", "{0} en jeu", "{0} spielen", "{0} in gioco");
+        A("1 jugando", "1 playing", "1 en jeu", "1 spielt", "1 in gioco");
         A("ROM lista", "ROM ready", "ROM prête", "ROM bereit", "ROM pronta");
         A("Falta la ROM", "ROM missing", "ROM manquante", "ROM fehlt", "ROM mancante");
         A("Resolución original", "Original resolution", "Résolution d'origine", "Originalauflösung", "Risoluzione originale");

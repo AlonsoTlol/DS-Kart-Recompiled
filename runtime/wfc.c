@@ -503,12 +503,13 @@ void wfc_atiende(uint64_t ms) {
 //   "DSKW" 1 vip(4)                                       HOLA
 //   "DSKW" 2 vip_origen(4) puerto(2) vip_destino(4) puerto(2) datos   un paquete UDP de una DS a otra
 // Como en las salas, con algunos routers (CG-NAT, datos móviles) no se puede.
-enum { T_HOLA = 1, T_DATOS = 2 };
+enum { T_HOLA = 1, T_DATOS = 2, T_PING = 3, T_PONG = 4 };  // PING/PONG: "DSKW" tipo vip(4) hora(4), para el ping
 typedef struct {
     uint32_t vip;
     struct sockaddr_in pub, loc, buena;  // la pública, la de casa y por la que ha llegado algo de verdad
     int hay_pub, hay_loc, hay_buena, holas;
-    uint64_t visto, ultimo_hola;
+    uint64_t visto, ultimo_hola, ultimo_ping, ultimo_pong;
+    int ping;                            // ms (media), con lo que tarda en volver un PING
 } Par;
 #define NPARES 64
 static Par pares[NPARES];
@@ -670,6 +671,7 @@ int wfc_tunel_direcciones(uint32_t *ip, uint16_t *puerto, uint32_t *ipl, uint16_
     return stun_ok;
 }
 
+int wfc_ping_ms(void);
 static void tunel_atiende(void) {
     if (tunel == INVALID_SOCKET) return;
     uint8_t b[1600];
@@ -688,6 +690,15 @@ static void tunel_atiende(void) {
         p->hay_buena = 1;
         p->visto = ahora_ms;
         if (b[4] == T_HOLA) { if (ahora_ms - p->ultimo_hola > 300) tunel_hola(p); }  // que el otro también sepa
+        else if (b[4] == T_PING && n >= 13) {  // se devuelve tal cual (con mi vip)
+            b[4] = T_PONG;
+            p32(b + 5, IP_DS);
+            sendto(tunel, (const char *)b, 13, 0, (struct sockaddr *)&de, sizeof de);
+        } else if (b[4] == T_PONG && n >= 13) {
+            int rtt = (int)((uint32_t)ahora_ms - g32(b + 9));
+            if (rtt >= 0 && rtt < 10000) p->ping = p->ultimo_pong && p->ping ? (p->ping * 3 + rtt) / 4 : rtt;
+            p->ultimo_pong = ahora_ms;
+        }
         else if (b[4] == T_DATOS && n >= 17 && g32(b + 11) == IP_DS) {
             t_rec++;
             t_rec_b += (unsigned)(n - 17);
@@ -702,8 +713,8 @@ static void tunel_atiende(void) {
     static uint64_t t_ultimo;
     if (ahora_ms - t_ultimo >= 2000) {  // cada 2 s: cuánto ha pasado por el túnel
         if (t_env || t_rec)
-            WT("[wfc] túnel en 2 s: %u enviados (%u bytes, el mayor %d), %u recibidos (%u bytes, el mayor %d) (%llu ms)\n",
-               t_env, t_env_b, t_env_max, t_rec, t_rec_b, t_rec_max, (unsigned long long)ahora_ms);
+            WT("[wfc] túnel en 2 s: %u enviados (%u bytes, el mayor %d), %u recibidos (%u bytes, el mayor %d), ping %d (%llu ms)\n",
+               t_env, t_env_b, t_env_max, t_rec, t_rec_b, t_rec_max, wfc_ping_ms(), (unsigned long long)ahora_ms);
         t_env = t_rec = t_env_b = t_rec_b = 0;
         t_env_max = t_rec_max = 0;
         t_ultimo = ahora_ms;
@@ -711,6 +722,13 @@ static void tunel_atiende(void) {
     for (int i = 0; i < NPARES; i++) {  // abrir camino, y mantenerlo abierto mientras se juega
         Par *p = &pares[i];
         if (!p->vip) continue;
+        if (p->hay_buena && ahora_ms - p->visto < 10000 && ahora_ms - p->ultimo_ping >= 1000) {  // el ping, cada segundo
+            uint8_t q[13] = {'D', 'S', 'K', 'W', T_PING};
+            p32(q + 5, IP_DS);
+            p32(q + 9, (uint32_t)ahora_ms);
+            sendto(tunel, (const char *)q, 13, 0, (struct sockaddr *)&p->buena, sizeof p->buena);
+            p->ultimo_ping = ahora_ms;
+        }
         if (p->holas > 0 && ahora_ms - p->ultimo_hola >= 250) { tunel_hola(p); p->holas--; }
         else if (p->hay_buena && ahora_ms - p->visto < 60000 && ahora_ms - p->ultimo_hola >= 5000) tunel_hola(p);
     }
@@ -727,4 +745,13 @@ static void parchea_https(void) {
         memmove(g_main + a + 4, g_main + a + 5, l - 4);  // "https" -> "http"
         WT("[wfc] parcheado https -> http en %08X\n", 0x02000000 + a);
     }
+}
+
+// El ping con los rivales del online (el peor de los que han contestado hace poco), o -1 si no se está jugando online.
+// Lo lee el contador de FPS del menú (menu.cpp), desde otro hilo: solo lee enteros.
+int wfc_ping_ms(void) {
+    int r = -1;
+    for (int i = 0; i < NPARES; i++)
+        if (pares[i].vip && pares[i].ultimo_pong && ahora_ms - pares[i].ultimo_pong < 5000 && pares[i].ping > r) r = pares[i].ping;
+    return r;
 }

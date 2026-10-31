@@ -72,6 +72,10 @@ partial class Launcher {
         }
         BorraLauncherViejo();
         BuscaActualizacion(false);
+        CuentaOnline();  // cuántos juegan al online ahora (y cada 30 s)
+        var reloj = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        reloj.Tick += delegate { CuentaOnline(); };
+        reloj.Start();
         ventana.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) {
             if (e.ButtonState == MouseButtonState.Pressed) ventana.DragMove();
         };
@@ -428,6 +432,22 @@ partial class Launcher {
         EstadoRom();
         Estado(T("ROM comprobada: lista para jugar"), false);
         return true;
+    }
+
+    // Cuántas personas están ahora en el online (el servidor de Cloudflare cuenta los juegos conectados a la CWF)
+    const string SALAS = "https://dskart-salas.alontubecontacto.workers.dev";
+    static void CuentaOnline() {
+        new System.Threading.Thread(delegate() {
+            string texto = "—";
+            try {
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+                using (var w = new WebClient()) {
+                    int n = int.Parse(w.DownloadString(SALAS + "/wfc/cuantos").Trim());
+                    texto = n == 1 ? T("1 jugando") : string.Format(T("{0} jugando"), n);
+                }
+            } catch (Exception) { }
+            ventana.Dispatcher.BeginInvoke(new Action(delegate { Busca<TextBlock>("ChipOnline").Text = texto; }));
+        }) { IsBackground = true }.Start();
     }
 
     // las etiquetas de la portada con los ajustes actuales
@@ -805,6 +825,11 @@ partial class Launcher {
             </StackPanel>
           </StackPanel>
 
+          <StackPanel DockPanel.Dock='Bottom' Orientation='Horizontal' Margin='8,0,0,10'>
+            <Ellipse Width='8' Height='8' Fill='#7CE3A0' VerticalAlignment='Center' Margin='0,0,8,0'/>
+            <TextBlock x:Name='ChipOnline' Text='…' Foreground='#C9CFEA' FontSize='12' VerticalAlignment='Center'/>
+            <TextBlock Text=' online' Foreground='#C9CFEA' FontSize='12' VerticalAlignment='Center'/>
+          </StackPanel>
           <TextBlock DockPanel.Dock='Bottom' x:Name='Version' Foreground='#5C6590' FontSize='11' Margin='8,0,0,0'
                      TextWrapping='Wrap'/>
 

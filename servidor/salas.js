@@ -153,9 +153,14 @@ export class Salas {
   }
 
   async fetch(req) {
-    if (req.method !== "POST") return texto("DS Kart Recompiled: servidor de salas\n");
     const url = new URL(req.url), p = url.searchParams, ahora = Date.now();
     this.limpia(ahora);
+    if (url.pathname === "/wfc/cuantos") {  // cuántos están en el online ahora mismo (lo enseña el launcher)
+      let n = 0;
+      for (const j of this.wfc.values()) if (ahora - j.visto <= CADUCA) n++;
+      return texto(`${n}\n`);
+    }
+    if (req.method !== "POST") return texto("DS Kart Recompiled: servidor de salas\n");
     if (url.pathname.startsWith("/wfc/")) return this.wfc_peticion(req, url.pathname, p, ahora);
     const codigo = (p.get("codigo") || "").toUpperCase();
     const sala = this.salas.get(codigo);

@@ -119,26 +119,49 @@ static struct {
     uint32_t perfil;
 } yo;
 
-static uint32_t perfil_de(const char *userid) {
-    uint32_t h = 2166136261u;  // FNV-1a: siempre el mismo perfil (y código de amigo) para la misma DS
+static uint32_t perfil_de(const char *userid, const char *gsbrcd) {
+    uint32_t h = 2166136261u;  // FNV-1a: siempre el mismo perfil (y código de amigo) para la misma DS y tarjeta
     for (const char *p = userid; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+    for (const char *p = gsbrcd; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
     return (h & 0x7FFFFFFF) | 0x100000;
 }
 
-// El perfil se guarda en wfc_perfil.txt (junto al juego): "perfil apellido"
+// Los perfiles, como en GameSpy: uno por número de usuario y gsbrcd (un código que el DWC guarda en la tarjeta).
+// El DWC pone en el "lastname" del perfil "000000000" + su gsbrcd y al volver comprueba que siga ahí; si no, cree
+// que la cuenta no es suya, se inventa otro gsbrcd y acaba en el error 20101. La primera vez (acctcreate) aún no
+// manda gsbrcd: el perfil de esa sesión se apunta también con el gsbrcd que trae el lastname.
+// wfc_perfil.txt (junto al juego), una línea por perfil: "userid gsbrcd perfil lastname"
+void wfc_firmware_pon_id(uint64_t id);  // ds.c
+
 static void perfil_lee(void) {
     yo.apellido[0] = 0;
+    yo.perfil = perfil_de(yo.userid, yo.gsbrcd);
     FILE *f = fopen("wfc_perfil.txt", "r");
     if (!f) return;
+    char u[32], g[32], a[64];
     unsigned p;
-    char a[64];
-    if (fscanf(f, "%u %63s", &p, a) == 2 && p == yo.perfil) snprintf(yo.apellido, sizeof yo.apellido, "%s", a);
+    while (fscanf(f, "%31s %31s %u %63s", u, g, &p, a) == 4)
+        if (!strcmp(u, yo.userid) && !strcmp(g, yo.gsbrcd[0] ? yo.gsbrcd : "-")) {
+            yo.perfil = p;
+            snprintf(yo.apellido, sizeof yo.apellido, "%s", a);
+        }
     fclose(f);
 }
-static void perfil_guarda(void) {
-    FILE *f = fopen("wfc_perfil.txt", "w");
+static void perfil_guarda(const char *gsbrcd) {
+    char l[64][160];
+    int n = 0;
+    FILE *f = fopen("wfc_perfil.txt", "r");
+    if (f) {
+        char u[32], g[32], a[64];
+        unsigned p;
+        while (n < 63 && fscanf(f, "%31s %31s %u %63s", u, g, &p, a) == 4)
+            if (strcmp(u, yo.userid) || strcmp(g, gsbrcd)) snprintf(l[n++], sizeof l[0], "%s %s %u %s\n", u, g, p, a);
+        fclose(f);
+    }
+    snprintf(l[n++], sizeof l[0], "%s %s %u %s\n", yo.userid, gsbrcd, yo.perfil, yo.apellido);
+    f = fopen("wfc_perfil.txt", "w");
     if (!f) return;
-    fprintf(f, "%u %s\n", yo.perfil, yo.apellido);
+    for (int i = 0; i < n; i++) fputs(l[i], f);
     fclose(f);
 }
 
@@ -218,8 +241,8 @@ static void nas(Con *c, const char *ruta, const char *form) {
         char t[40];
         azar_texto(t, 32, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789");
         snprintf(yo.token, sizeof yo.token, "NDS%s", t);
-        yo.perfil = perfil_de(yo.userid);
         perfil_lee();
+        wfc_firmware_pon_id(strtoull(yo.userid, NULL, 10));  // ds.c: que la consola lo recuerde
         nas_pon(r, sizeof r, "retry", "0");
         nas_pon(r, sizeof r, "returncd", strcmp(accion, "login") ? "002" : "001");
         nas_pon(r, sizeof r, "locator", "gamespy.com");
@@ -301,6 +324,7 @@ static void gpcm(Con *c, const char *m) {
         snprintf(r, sizeof r, "\\lc\\2\\sesskey\\%s\\proof\\%s\\userid\\%s\\profileid\\%u\\uniquenick\\dskr%08x\\lt\\%s__\\id\\%s\\final\\",
                  sesion, prueba, yo.userid, yo.perfil, yo.perfil, lt, id[0] ? id : "1");
         gp_envia(c, r);
+        wfc_firmware_pon_id(strtoull(yo.userid, NULL, 10));  // otra vez: el juego reescribe el firmware al conectar
     } else if (!strncmp(m, "\\getprofile\\", 12)) {
         char sig[33];
         azar_texto(sig, 32, "0123456789abcdef");
@@ -314,7 +338,8 @@ static void gpcm(Con *c, const char *m) {
         gs_valor(m, "lastname", a, sizeof a);
         if (strstr(m, "\\lastname\\")) {
             snprintf(yo.apellido, sizeof yo.apellido, "%s", a);
-            perfil_guarda();
+            perfil_guarda(yo.gsbrcd[0] ? yo.gsbrcd : "-");
+            if (strlen(a) > 9) perfil_guarda(a + 9);  // el gsbrcd que usará la próxima vez (va en el lastname)
         }
     } else if (!strncmp(m, "\\ka\\", 4)) {
         gp_envia(c, "\\ka\\\\final\\");
