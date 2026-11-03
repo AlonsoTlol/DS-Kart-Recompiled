@@ -65,8 +65,16 @@ static RECT rect_normal;
 int video_escala(void);
 const uint32_t *video_hd(int abajo);
 static uint32_t *imagen_hd = marcos[0].hd, imagen_lado_hd[2048 * 768];
-static BITMAPINFO bmi_hd, bmi_lado_hd;
+static BITMAPINFO bmi_hd, bmi_lado_hd, bmi_una, bmi_una_hd;  // _una: una sola pantalla (256x192)
 static LONG estilo_normal;
+// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 una encima de otra (lado a lado en pantalla
+// completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y abajo a la derecha
+// (issue #11): juntas son 16:9, como un monitor normal. En la 1 la táctil va en ov_* (dentro de dst_*)
+static int disposicion;
+static int ov_x, ov_y, ov_w, ov_h;
+static volatile int pide_disp = -1;  // el menú la cambia: se hace en ventana_mensajes
+int ventana_disposicion(void) { return disposicion; }
+void ventana_pon_disposicion(int d) { pide_disp = d ? 1 : 0; }
 
 static void calcula_destino(void) {
     RECT r;
@@ -74,10 +82,25 @@ static void calcula_destino(void) {
     int w = r.right, h = r.bottom;
     if (w <= 0 || h <= 0) return;
     int iw = pantalla_completa ? 512 : 256, ih = pantalla_completa ? 192 : 384;  // tamaño de la imagen
+    if (disposicion) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
     if (w * ih > h * iw) { dst_h = h; dst_w = h * iw / ih; }   // sobra ancho: bandas a los lados
     else { dst_w = w; dst_h = w * ih / iw; }                   // sobra alto: bandas arriba y abajo
     dst_x = (w - dst_w) / 2;
     dst_y = (h - dst_h) / 2;
+    ov_x = dst_x + dst_h * 4 / 3;  // la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
+    ov_w = dst_x + dst_w - ov_x;
+    ov_h = ov_w * 3 / 4;
+    ov_y = dst_y + dst_h - ov_h;
+}
+
+// Tamaño de la ventana (sin pantalla completa): una encima de otra, 256x384; al lado, 16:9 con el mismo alto
+// (la de arriba al doble)
+static int ancho_ventana(void) { return disposicion ? (384 * ESCALA * 16 + 8) / 9 : 256 * ESCALA; }
+static void ajusta_ventana(void) {
+    if (pantalla_completa) return;
+    RECT r = {0, 0, ancho_ventana(), 384 * ESCALA};
+    AdjustWindowRect(&r, (DWORD)GetWindowLongW(ventana, GWL_STYLE), FALSE);
+    SetWindowPos(ventana, NULL, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER);
 }
 
 static void compone(HDC dc) {  // dibuja todo (imagen, bandas, cartel) en dc
@@ -89,7 +112,15 @@ static void compone(HDC dc) {  // dibuja todo (imagen, bandas, cartel) en dc
     FillRect(dc, &b1, negro); FillRect(dc, &b2, negro); FillRect(dc, &b3, negro); FillRect(dc, &b4, negro);
     SetStretchBltMode(dc, COLORONCOLOR);
     int e = video_escala();
-    if (e > 1 && pantalla_completa) {
+    if (disposicion) {  // la de arriba a todo el alto; la táctil a su derecha, abajo (encima de ella, negro)
+        const uint32_t *px = e > 1 ? imagen_hd : imagen;
+        const BITMAPINFO *b = e > 1 ? &bmi_una_hd : &bmi_una;
+        StretchDIBits(dc, dst_x, dst_y, ov_x - dst_x, dst_h, 0, 0, 256 * e, 192 * e, px, b, DIB_RGB_COLORS, SRCCOPY);
+        RECT hueco = {ov_x, dst_y, ov_x + ov_w, ov_y};
+        FillRect(dc, &hueco, negro);
+        StretchDIBits(dc, ov_x, ov_y, ov_w, ov_h, 0, 0, 256 * e, 192 * e, px + (size_t)256 * 192 * e * e, b,
+                      DIB_RGB_COLORS, SRCCOPY);
+    } else if (e > 1 && pantalla_completa) {
         int an = 256 * e;
         for (int y = 0; y < 192 * e; y++) {
             memcpy(imagen_lado_hd + (size_t)y * an * 2, imagen_hd + (size_t)y * an, (size_t)an * 4);
@@ -173,7 +204,17 @@ static void cambia_pantalla_completa(void) {
         SetWindowPos(ventana, NULL, rect_normal.left, rect_normal.top, rect_normal.right - rect_normal.left,
                      rect_normal.bottom - rect_normal.top, SWP_FRAMECHANGED | SWP_NOZORDER | SWP_SHOWWINDOW);
         pantalla_completa = 0;
+        ajusta_ventana();  // por si se cambió la disposición en pantalla completa
     }
+    EnterCriticalSection(&cs_gdi);
+    calcula_destino();
+    LeaveCriticalSection(&cs_gdi);
+    SetEvent(ev_pintar);
+}
+
+static void cambia_disposicion(int d) {
+    disposicion = d;
+    ajusta_ventana();
     EnterCriticalSection(&cs_gdi);
     calcula_destino();
     LeaveCriticalSection(&cs_gdi);
@@ -237,7 +278,12 @@ static void tecla(WPARAM vk, int pulsada) {
 static void raton(LPARAM lp, int pulsado) {
     if (dst_w <= 0 || dst_h <= 0) return;
     int x, y;
-    if (pantalla_completa) {  // la táctil es la mitad derecha
+    if (disposicion) {  // la táctil es el recuadro de la derecha
+        if (ov_w <= 0 || ov_h <= 0) return;
+        x = ((short)LOWORD(lp) - ov_x) * 256 / ov_w;
+        y = ((short)HIWORD(lp) - ov_y) * 192 / ov_h;
+        if ((short)LOWORD(lp) < ov_x || (short)HIWORD(lp) < ov_y) x = -1;  // la división redondea hacia 0
+    } else if (pantalla_completa) {  // la táctil es la mitad derecha
         x = ((short)LOWORD(lp) - dst_x) * 512 / dst_w - 256;
         y = ((short)HIWORD(lp) - dst_y) * 192 / dst_h;
     } else {
@@ -421,9 +467,13 @@ static void gl_pinta(HDC dc, int i, int subir) {
     glColor4f(1, 1, 1, 1);
     EnterCriticalSection(&cs_gdi);
     float x = (float)dst_x, y = (float)dst_y, w = (float)dst_w, h = (float)dst_h;
-    int lado = pantalla_completa;
+    float ox = (float)ov_x, oy = (float)ov_y, ow = (float)ov_w, oh = (float)ov_h;
+    int lado = pantalla_completa, al_lado = disposicion;
     LeaveCriticalSection(&cs_gdi);
-    if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
+    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo
+        gl_rect(x, y, ox - x, h, 0, 0, 1, 0.5f);
+        gl_rect(ox, oy, ow, oh, 0, 0.5f, 1, 1);
+    } else if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
         gl_rect(x, y, w / 2, h, 0, 0, 1, 0.5f);
         gl_rect(x + w / 2, y, w / 2, h, 0, 0.5f, 1, 1);
     } else {
@@ -442,10 +492,14 @@ static void gl_pinta(HDC dc, int i, int subir) {
     }
     menu_pinta(r.right, r.bottom, r.right, r.bottom);  // el menú de ajustes y el contador de FPS, si toca
     // pruebas: MKDS_CAPTURA_VENTANA=x.bmp guarda lo que se ve en la ventana (con el menú) a los 5 s y sale
+    // (MKDS_CAPTURA_VENTANA_EN=n: en la imagen n en vez de la 300)
     static const char *captura = (const char *)1;
-    static int pintadas;
-    if (captura == (const char *)1) captura = getenv("MKDS_CAPTURA_VENTANA");
-    if (captura && ++pintadas == 300) {
+    static int pintadas, en = 300;
+    if (captura == (const char *)1) {
+        captura = getenv("MKDS_CAPTURA_VENTANA");
+        if (getenv("MKDS_CAPTURA_VENTANA_EN")) en = atoi(getenv("MKDS_CAPTURA_VENTANA_EN"));
+    }
+    if (captura && ++pintadas == en) {
         int w = r.right, hh = r.bottom;
         uint32_t *px = malloc((size_t)w * hh * 4);
         glReadBuffer(GL_BACK);
@@ -504,7 +558,8 @@ void ventana_inicia(void) {
     wc.hIcon = (HICON)LoadImageW(NULL, L"icono.ico", IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);  // el logo
     wc.lpszClassName = L"mkds";
     RegisterClassW(&wc);
-    RECT r = {0, 0, 256 * ESCALA, 384 * ESCALA};
+    disposicion = getenv("MKDS_DISPOSICION") && atoi(getenv("MKDS_DISPOSICION")) == 1;
+    RECT r = {0, 0, ancho_ventana(), 384 * ESCALA};
     DWORD estilo = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, estilo, FALSE);
     int fuera = getenv("MKDS_VENTANA_FUERA") != NULL;  // pruebas: la ventana fuera de la pantalla, sin molestar
@@ -527,6 +582,10 @@ void ventana_inicia(void) {
     bmi_lado_hd = bmi;
     bmi_lado_hd.bmiHeader.biWidth = 512 * e;
     bmi_lado_hd.bmiHeader.biHeight = -192 * e;
+    bmi_una = bmi;
+    bmi_una.bmiHeader.biHeight = -192;
+    bmi_una_hd = bmi_hd;
+    bmi_una_hd.bmiHeader.biHeight = -192 * e;
     ShowWindow(ventana, fuera ? SW_SHOWNOACTIVATE : SW_SHOW);
     if (getenv("MKDS_PANTALLA_COMPLETA") && atoi(getenv("MKDS_PANTALLA_COMPLETA"))) cambia_pantalla_completa();
     CreateThread(NULL, 0, hilo_mando_ps, NULL, 0, NULL);
@@ -786,6 +845,10 @@ void ventana_mensajes(void) {
     if (pide_pc) {
         if ((pide_pc == 1) != (pantalla_completa != 0)) cambia_pantalla_completa();
         pide_pc = 0;
+    }
+    if (pide_disp >= 0) {
+        if (pide_disp != disposicion) cambia_disposicion(pide_disp);
+        pide_disp = -1;
     }
     if (menu_abierto()) {  // el menú se queda los botones; el juego no ve nada pulsado
         menu_mando(mando_in & ps_in);

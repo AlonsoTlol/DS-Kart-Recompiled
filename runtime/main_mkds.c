@@ -6,7 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
+void apunta_fallo(const char *que);
 extern volatile uint32_t g_actividad;
 
 // ---- trucos --------------------------------------------------------------
@@ -146,10 +148,25 @@ static DWORD WINAPI vigilante(LPVOID p) {
             fprintf(stderr, "\n[mkds] atascado 3 s sin tocar el hardware\n");
             volcado(&g_cpu9);
             volcado(&g_cpu7);
+            apunta_fallo("atascado 3 s sin tocar el hardware");
             ExitProcess(7);
         }
         antes = g_actividad;
     }
+}
+
+// Las salidas del juego que no son un fallo del PC (código sin traducir, instrucción no soportada, atascado...)
+// también se apuntan en fallos.txt: desde el launcher no se ve la salida de errores y si no, no queda rastro
+void apunta_fallo(const char *que) {
+    FILE *f = fopen("fallos.txt", "a");
+    if (!f) return;
+    time_t t = time(NULL);
+    struct tm *l = localtime(&t);
+    char fecha[32] = "?";
+    if (l) strftime(fecha, sizeof fecha, "%Y-%m-%d %H:%M:%S", l);
+    fprintf(f, "%s  ARM9 en %08X (función %08X, lr %08X)  ARM7 en %08X (función %08X)\n[mkds] %s\n\n", fecha,
+            g_cpu9.r[15], g_cpu9.func, g_cpu9.r[14], g_cpu7.r[15], g_cpu7.func, que);
+    fclose(f);
 }
 
 #ifdef _WIN32
@@ -344,9 +361,14 @@ static void carga_codigo(const uint8_t *rom, size_t n) {
 #ifndef _WIN32
 static void ve_a_la_carpeta_del_juego(void) {  // en Linux, igual: el ejecutable está en build/
     static char ruta[MAX_PATH];
+#ifdef __APPLE__  // macOS no tiene /proc
+    uint32_t tam = sizeof ruta;
+    if (_NSGetExecutablePath(ruta, &tam)) return;
+#else
     ssize_t n = readlink("/proc/self/exe", ruta, sizeof ruta - 1);
     if (n <= 0) return;
     ruta[n] = 0;
+#endif
     char *barra = strrchr(ruta, '/');
     if (!barra) return;
     *barra = 0;

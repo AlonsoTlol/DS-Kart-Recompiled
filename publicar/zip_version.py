@@ -11,7 +11,7 @@ with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED) as z:
             ruta = os.path.join(raiz, a)
             nombre = os.path.relpath(ruta, base).replace(os.sep, "/")
             info = zipfile.ZipInfo.from_file(ruta, nombre)
-            info.external_attr = (0o755 if a.endswith(".sh") else 0o644) << 16
+            info.external_attr = (0o755 if a.endswith((".sh", ".command")) else 0o644) << 16
             info.create_system = 3  # Unix: para que se respeten los permisos al descomprimir en Linux
             info.compress_type = zipfile.ZIP_STORED if a.endswith(".mp4") else zipfile.ZIP_DEFLATED
             with open(ruta, "rb") as f:

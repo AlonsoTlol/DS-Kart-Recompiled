@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+void apunta_fallo(const char *que);  // main_mkds.c: también en fallos.txt
 
 static void cpu_set(Cpu *c, int rapido) {
     uint32_t src = c->r[0], dst = c->r[1], ctl = c->r[2];
@@ -183,5 +184,10 @@ void bios_swi(Cpu *c, uint32_t n) {
     case 0x1F: return;  // CustomPost
     }
     fprintf(stderr, "[recomp] SWI %02X de la BIOS del %s sin hacer todavía\n", n, c->id ? "ARM7" : "ARM9");
+    {
+        char m[64];
+        snprintf(m, sizeof m, "SWI %02X de la BIOS del %s sin hacer", n, c->id ? "ARM7" : "ARM9");
+        apunta_fallo(m);
+    }
     exit(4);
 }

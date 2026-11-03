@@ -61,16 +61,30 @@ static int64_t reloj(void) {
 }
 int64_t ventana_reloj(void) { return reloj(); }
 
+// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 una encima de otra (lado a lado en pantalla
+// completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y abajo a la derecha
+// (issue #11): juntas son 16:9. La táctil va en ov_*
+static int disposicion;
+static int ov_x, ov_y, ov_w, ov_h;
+static volatile int pide_disp = -1;  // el menú la cambia: se hace en ventana_mensajes
+int ventana_disposicion(void) { return disposicion; }
+void ventana_pon_disposicion(int d) { pide_disp = d ? 1 : 0; }
+
 static void calcula_destino(void) {
     int w, h;
     SDL_GetWindowSize(ventana, &w, &h);
     if (w <= 0 || h <= 0) return;
     int iw = pantalla_completa ? 512 : 256, ih = pantalla_completa ? 192 : 384;
+    if (disposicion) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
     EnterCriticalSection(&cs_destino);
     if (w * ih > h * iw) { dst_h = h; dst_w = h * iw / ih; }   // sobra ancho: bandas a los lados
     else { dst_w = w; dst_h = w * ih / iw; }                   // sobra alto: bandas arriba y abajo
     dst_x = (w - dst_w) / 2;
     dst_y = (h - dst_h) / 2;
+    ov_x = dst_x + dst_h * 4 / 3;  // la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
+    ov_w = dst_x + dst_w - ov_x;
+    ov_h = ov_w * 3 / 4;
+    ov_y = dst_y + dst_h - ov_h;
     LeaveCriticalSection(&cs_destino);
 }
 
@@ -129,9 +143,13 @@ static void gl_pinta(int i, int subir) {
     glColor4f(1, 1, 1, 1);
     EnterCriticalSection(&cs_destino);
     float x = (float)dst_x, y = (float)dst_y, w = (float)dst_w, h = (float)dst_h;
-    int lado = pantalla_completa;
+    float ox = (float)ov_x, oy = (float)ov_y, ow = (float)ov_w, oh = (float)ov_h;
+    int lado = pantalla_completa, al_lado = disposicion;
     LeaveCriticalSection(&cs_destino);
-    if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
+    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo
+        gl_rect(x, y, ox - x, h, 0, 0, 1, 0.5f);
+        gl_rect(ox, oy, ow, oh, 0, 0.5f, 1, 1);
+    } else if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
         gl_rect(x, y, w / 2, h, 0, 0, 1, 0.5f);
         gl_rect(x + w / 2, y, w / 2, h, 0, 0.5f, 1, 1);
     } else {
@@ -171,6 +189,14 @@ static void cambia_pantalla_completa(void) {
     calcula_destino();
 }
 
+// Al lado: la ventana en 16:9 con el mismo alto (la de arriba al doble); una encima de otra, como al principio
+static int ancho_ventana(void) { return disposicion ? (384 * ESCALA * 16 + 8) / 9 : 256 * ESCALA; }
+static void cambia_disposicion(int d) {
+    disposicion = d;
+    if (!pantalla_completa) SDL_SetWindowSize(ventana, ancho_ventana(), 384 * ESCALA);
+    calcula_destino();
+}
+
 void ventana_inicia(void) {
     InitializeCriticalSection(&cs_marcos);
     InitializeCriticalSection(&cs_destino);
@@ -180,8 +206,10 @@ void ventana_inicia(void) {
         exit(1);
     }
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    ventana = SDL_CreateWindow("DS Kart Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256 * ESCALA,
-                               384 * ESCALA, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    disposicion = getenv("MKDS_DISPOSICION") && atoi(getenv("MKDS_DISPOSICION")) == 1;
+    ventana = SDL_CreateWindow("DS Kart Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                               ancho_ventana(), 384 * ESCALA,
+                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!ventana) { fprintf(stderr, "[ventana] no se pudo abrir: %s\n", SDL_GetError()); exit(1); }
     contexto = SDL_GL_CreateContext(ventana);
     if (!contexto) { fprintf(stderr, "[ventana] sin OpenGL: %s\n", SDL_GetError()); exit(1); }
@@ -316,10 +344,15 @@ static void tecla(SDL_Keycode k, int pulsada) {
 static void raton(int mx, int my, int pulsado) {
     EnterCriticalSection(&cs_destino);
     int x0 = dst_x, y0 = dst_y, w = dst_w, h = dst_h;
+    int ox = ov_x, oy = ov_y, ow = ov_w, oh = ov_h;
     LeaveCriticalSection(&cs_destino);
     if (w <= 0 || h <= 0) return;
     int x, y;
-    if (pantalla_completa) {  // la táctil es la mitad derecha
+    if (disposicion) {  // la táctil es el recuadro de la derecha
+        if (ow <= 0 || oh <= 0) return;
+        x = mx < ox ? -1 : (mx - ox) * 256 / ow;
+        y = my < oy ? -1 : (my - oy) * 192 / oh;
+    } else if (pantalla_completa) {  // la táctil es la mitad derecha
         x = (mx - x0) * 512 / w - 256;
         y = (my - y0) * 192 / h;
     } else {
@@ -455,6 +488,10 @@ void ventana_mensajes(void) {
     if (pide_pc) {
         if ((pide_pc == 1) != (pantalla_completa != 0)) cambia_pantalla_completa();
         pide_pc = 0;
+    }
+    if (pide_disp >= 0) {
+        if (pide_disp != disposicion) cambia_disposicion(pide_disp);
+        pide_disp = -1;
     }
     if (menu_abierto()) {  // el menú se queda los botones; el juego no ve nada pulsado
         menu_mando(mando_in);

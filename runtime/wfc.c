@@ -218,9 +218,11 @@ struct Con {
     void *datos;               // del servicio (se libera con free al cerrar)
 };
 #define NCON 16
+static int tcp_traza;  // MKDS_TCP_LOG: cada segmento
 static Con cons[NCON];
 
 static void tcp_segmento(Con *c, uint32_t seq, uint8_t flags, const uint8_t *d, int n) {
+    if (tcp_traza) fprintf(stderr, "[tcp] -> DS %u<-%u seq %08X ack %08X fl %02X n %d\n", c->po, c->pd, seq, c->su_seq, flags, n);
     uint8_t t[1500];
     memset(t, 0, 20);
     p16(t, c->pd); p16(t + 2, c->po);
@@ -280,6 +282,7 @@ static void tcp(uint32_t ipo, uint32_t ipd, const uint8_t *t, int n) {
     int hl = (t[12] >> 4) * 4;
     uint8_t fl = t[13];
     if (hl < 20 || hl > n) return;
+    if (tcp_traza) fprintf(stderr, "[tcp] <- DS %u->%u seq %08X ack %08X fl %02X n %d\n", g16(t), g16(t + 2), g32(t + 4), g32(t + 8), t[13], n - hl);
     const uint8_t *d = t + hl;
     int nd = n - hl;
     Con *c = NULL;
@@ -422,6 +425,7 @@ static void parchea_https(void);
 
 static void inicia(void) {
     if (wfc_traza < 0) wfc_traza = getenv("MKDS_WIFI_LOG") != NULL;
+    tcp_traza = getenv("MKDS_TCP_LOG") != NULL;
     if (!wfc_ip_ds) {  // la IP de esta DS en la red virtual: al azar (que coincidan dos es casi imposible)
 #ifdef _WIN32
         unsigned proceso = (unsigned)GetCurrentProcessId();
@@ -508,7 +512,7 @@ typedef struct {
     uint32_t vip;
     struct sockaddr_in pub, loc, buena;  // la pública, la de casa y por la que ha llegado algo de verdad
     int hay_pub, hay_loc, hay_buena, holas;
-    uint64_t visto, ultimo_hola, ultimo_ping, ultimo_pong;
+    uint64_t visto, ultimo_hola, ultimo_ping, ultimo_pong, ultimo_datos;  // ultimo_datos: el último paquete de la DS
     int ping;                            // ms (media), con lo que tarda en volver un PING
 } Par;
 #define NPARES 64
@@ -700,6 +704,7 @@ static void tunel_atiende(void) {
             p->ultimo_pong = ahora_ms;
         }
         else if (b[4] == T_DATOS && n >= 17 && g32(b + 11) == IP_DS) {
+            p->ultimo_datos = ahora_ms;
             t_rec++;
             t_rec_b += (unsigned)(n - 17);
             if (n - 17 > t_rec_max) t_rec_max = n - 17;
@@ -722,7 +727,7 @@ static void tunel_atiende(void) {
     for (int i = 0; i < NPARES; i++) {  // abrir camino, y mantenerlo abierto mientras se juega
         Par *p = &pares[i];
         if (!p->vip) continue;
-        if (p->hay_buena && ahora_ms - p->visto < 10000 && ahora_ms - p->ultimo_ping >= 1000) {  // el ping, cada segundo
+        if (p->hay_buena && ahora_ms - p->ultimo_datos < 10000 && ahora_ms - p->ultimo_ping >= 1000) {  // el ping, cada segundo
             uint8_t q[13] = {'D', 'S', 'K', 'W', T_PING};
             p32(q + 5, IP_DS);
             p32(q + 9, (uint32_t)ahora_ms);
@@ -730,7 +735,7 @@ static void tunel_atiende(void) {
             p->ultimo_ping = ahora_ms;
         }
         if (p->holas > 0 && ahora_ms - p->ultimo_hola >= 250) { tunel_hola(p); p->holas--; }
-        else if (p->hay_buena && ahora_ms - p->visto < 60000 && ahora_ms - p->ultimo_hola >= 5000) tunel_hola(p);
+        else if (p->hay_buena && ahora_ms - p->ultimo_datos < 60000 && ahora_ms - p->ultimo_hola >= 5000) tunel_hola(p);
     }
 }
 
@@ -752,6 +757,8 @@ static void parchea_https(void) {
 int wfc_ping_ms(void) {
     int r = -1;
     for (int i = 0; i < NPARES; i++)
-        if (pares[i].vip && pares[i].ultimo_pong && ahora_ms - pares[i].ultimo_pong < 5000 && pares[i].ping > r) r = pares[i].ping;
+        if (pares[i].vip && pares[i].ultimo_pong && ahora_ms - pares[i].ultimo_pong < 5000 && ahora_ms - pares[i].ultimo_datos < 3000 &&
+            pares[i].ping > r)  // solo mientras se juega con esa DS (después del menú los túneles siguen saludándose)
+            r = pares[i].ping;
     return r;
 }

@@ -21,7 +21,8 @@ Because it runs natively, it can go beyond the original:
 
 - **3D at 2×, 3× or 4× resolution** — menus and HUD stay pixel-perfect like on the DS
 - **Up to 240 fps** — in-between 3D frames are generated while the game logic stays at 60
-- **Full screen with both screens side by side**
+- **Full screen with both screens side by side**, or the top screen big with the touch screen small beside it (16:9)
+- **3D on the graphics card (experimental)** — same image, much less CPU
 - **PS5, PS4 and Xbox controllers**, and your **PC microphone** for Balloon Battle
 - **Instant replays** — F10 saves the last 30 seconds as a video
 - **In-game settings menu** (F1 or L3 + R3): graphics, controllers, audio, name, language, FPS counter
@@ -83,6 +84,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
 - 🧪 Linux (beta) — works, without a launcher window yet
+- 🧪 macOS (beta, not tested yet) — the Linux version built on a Mac: see `mac/LEEME.txt` and tell us how it goes
 - 🌐 **Online play (beta):** use the game's own **Nintendo WFC** menu (Worldwide, Continental, Rivals, Friends) for up to 4 players. It runs on our own small server (no Wiimmfi needed); races go directly between players. Some networks (CG-NAT, mobile data) may not connect.
 
 ## Credits
@@ -120,7 +122,8 @@ Como funciona de forma nativa, puede ir más allá del original:
 
 - **3D a 2×, 3× o 4× de resolución**: los menús y el marcador se ven como en la DS, sin difuminar
 - **Hasta 240 imágenes por segundo**: se inventan imágenes intermedias del 3D mientras el juego sigue a 60
-- **Pantalla completa con las dos pantallas lado a lado**
+- **Pantalla completa con las dos pantallas lado a lado**, o la de arriba grande con la táctil pequeña al lado (16:9)
+- **3D con la tarjeta gráfica (experimental)**: la misma imagen gastando mucha menos CPU
 - **Mandos de PS5, PS4 y Xbox**, y el **micrófono del PC** para la Batalla de globos
 - **Repeticiones instantáneas**: F10 guarda los últimos 30 segundos en vídeo
 - **Menú de ajustes dentro del juego** (F1 o L3 + R3): gráficos, mandos, audio, nombre, idioma, contador de FPS
@@ -183,6 +186,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
 - 🧪 Linux (beta): funciona, todavía sin ventana de launcher
+- 🧪 macOS (beta, aún sin probar): la versión de Linux compilada en un Mac; mira `mac/LEEME.txt` y cuéntanos cómo va
 - 🌐 **Online (beta):** usa el menú **Conexión Wi-Fi de Nintendo** del propio juego (Mundial, Continental, Con rival, Amigos) para hasta 4 jugadores. Funciona con nuestro propio servidor (sin Wiimmfi) y las carreras van directas entre jugadores. Algunas redes (CG-NAT, datos móviles) puede que no conecten.
 
 ## Créditos

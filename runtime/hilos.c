@@ -13,6 +13,7 @@
 #include "ds.h"
 #include <stdio.h>
 #include <stdlib.h>
+void apunta_fallo(const char *que);  // main_mkds.c: también en fallos.txt
 
 typedef struct {
     uint32_t ctx;      // dirección del contexto en la memoria de la DS
@@ -20,7 +21,10 @@ typedef struct {
     int guardado;
 } Hilo;
 
-static Hilo hilos[2][64];
+// El juego crea hilos nuevos sobre la marcha (el online, sobre todo: unos 30 en pocos minutos), cada uno en un
+// contexto de la memoria dinámica, y aquí no se borraban nunca: con 64 el juego se cerraba sin avisar.
+#define MAX_HILOS 256
+static Hilo hilos[2][MAX_HILOS];
 static int nhilos[2];
 static uint32_t cargando[2];  // contexto que se está cargando en cada procesador
 
@@ -28,8 +32,13 @@ static Hilo *busca(Cpu *c, uint32_t ctx) {
     Hilo *t = hilos[c->id];
     for (int i = 0; i < nhilos[c->id]; i++)
         if (t[i].ctx == ctx) return &t[i];
-    if (nhilos[c->id] == 64) { fprintf(stderr, "[hilos] demasiados hilos\n"); exit(8); }
-    Hilo *h = &t[nhilos[c->id]++];
+    Hilo *h = NULL;
+    if (nhilos[c->id] < MAX_HILOS) h = &t[nhilos[c->id]++];
+    else  // llena: el hueco de un hilo olvidado o que la DS ya ha terminado (OSThread.state 2); su fibra se queda
+        for (int i = 0; i < MAX_HILOS && !h; i++)
+            if (t[i].fibra != GetCurrentFiber() && (!t[i].fibra || brd32(c, t[i].ctx + g_so[c->id].off_estado) == 2))
+                h = &t[i];
+    if (!h) { fprintf(stderr, "[hilos] demasiados hilos\n"); apunta_fallo("demasiados hilos"); exit(8); }
     memset(h, 0, sizeof *h);
     h->ctx = ctx;
     return h;
@@ -120,6 +129,7 @@ static void WINAPI fibra_nueva(void *p) {
     cpu_llama(c, pc);
     cpu_llama(c, salida);  // la función del hilo terminó: va a OS_ExitThread
     fprintf(stderr, "[hilos] un hilo ha terminado sin cambiar a otro\n");
+    apunta_fallo("un hilo ha terminado sin cambiar a otro");
     exit(8);
 }
 
@@ -133,7 +143,7 @@ void hle_load_context(Cpu *c) {
         a->c = c;
         a->h = h;
         h->fibra = CreateFiberEx(64 * 1024, 64 * 1024 * 1024, 0, fibra_nueva, a);
-        if (!h->fibra) { fprintf(stderr, "[hilos] no se pudo crear la fibra\n"); exit(8); }
+        if (!h->fibra) { fprintf(stderr, "[hilos] no se pudo crear la fibra\n"); apunta_fallo("no se pudo crear la fibra de un hilo"); exit(8); }
     }
     SwitchToFiber(h->fibra);
     entra(c);  // alguien ha cargado un contexto de esta fibra

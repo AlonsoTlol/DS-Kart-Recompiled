@@ -12,6 +12,15 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#ifdef __APPLE__  // macOS: ucontext solo con _XOPEN_SOURCE, y sin _DARWIN_C_SOURCE se esconden MAP_ANONYMOUS y más
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE 1
+#endif
+#include <mach-o/dyld.h>  // _NSGetExecutablePath (main_mkds.c)
+#endif
 #include <errno.h>
 #include <pthread.h>
 #include <sched.h>
@@ -209,10 +218,15 @@ static inline int _putenv_s(const char *var, const char *valor) { return setenv(
 
 static inline BOOL GetProcessAffinityMask(HANDLE p, DWORD_PTR *proceso, DWORD_PTR *sistema) {
     (void)p;
-    cpu_set_t s;
     DWORD_PTR m = 0;
+#ifdef __APPLE__  // en macOS no hay afinidad: todos los núcleos
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    for (long i = 0; i < n && i < 64; i++) m |= (DWORD_PTR)1 << i;
+#else
+    cpu_set_t s;
     if (!sched_getaffinity(0, sizeof s, &s))
         for (int i = 0; i < 64 && i < CPU_SETSIZE; i++) if (CPU_ISSET(i, &s)) m |= (DWORD_PTR)1 << i;
+#endif
     if (!m) m = 1;
     *proceso = *sistema = m;
     return 1;

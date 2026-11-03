@@ -28,7 +28,8 @@ The game is NOT included: you need a dump of your own cartridge.
 
 Settings: in ajustes.ini (created the first time): NOMBRE (your name), ESCALA
 (1-4, 3D resolution), FPS (60/120/180/240), PANTALLA_COMPLETA (fullscreen 0/1),
-IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1).
+IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1),
+DISPOSICION (0 screens one above the other, 1 big top screen with the small touch screen beside it, 16:9).
 
 Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Backspace = Select, mouse = stylus on the bottom screen,
@@ -70,7 +71,8 @@ El juego NO viene incluido: necesitas una copia de tu propio cartucho.
 
 Ajustes: en ajustes.ini (se crea la primera vez): NOMBRE, ESCALA (1-4, resolución
 del 3D), FPS (60/120/180/240), PANTALLA_COMPLETA (0/1), IDIOMA (1 inglés,
-2 francés, 3 alemán, 4 italiano, 5 español), MICRO (0/1).
+2 francés, 3 alemán, 4 italiano, 5 español), MICRO (0/1), DISPOSICION (0 una
+pantalla encima de otra, 1 la de arriba grande y la táctil pequeña al lado, 16:9).
 
 Controles: flechas = cruceta, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Retroceso = Select, ratón = lápiz en la pantalla de abajo,

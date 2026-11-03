@@ -504,6 +504,11 @@ static void captura_linea(const uint8_t *io9, uint32_t cap, int y) {
     static const int ancho[4] = {128, 256, 256, 256}, alto[4] = {128, 64, 128, 192};
     int sz = (cap >> 20) & 3, w = ancho[sz];
     if (y >= alto[sz]) return;
+    // Como en la consola, solo en un banco en modo LCDC (MST 0). Además esto va en el hilo de montaje, algo por
+    // detrás del juego: al acabar la presentación de un jefe el juego ya había pasado ese banco a los fondos de la
+    // pantalla de abajo y cargado el minimapa, y la copia atrasada del 3D lo llenaba de franjas de agua
+    uint8_t vc = vramcnt[(cap >> 16) & 3];
+    if (!(vc & 0x80) || (vc & 7) != 0) return;
     uint8_t *dst = banco[(cap >> 16) & 3];
     uint32_t woff = ((cap >> 18) & 3) * 0x8000;
     uint32_t dispcnt = (uint32_t)(io9[0] | io9[1] << 8 | io9[2] << 16 | io9[3] << 24);

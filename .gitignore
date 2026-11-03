@@ -28,3 +28,8 @@ herramientas/
 actualizacion/
 publicar/*.zip
 Launcher.old.exe
+
+# Worker de Cloudflare en local (npx wrangler dev)
+servidor/.wrangler/
+servidor/node_modules/
+wfc_perfil.txt

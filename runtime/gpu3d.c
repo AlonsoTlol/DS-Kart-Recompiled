@@ -623,6 +623,54 @@ static uint16_t texel(uint32_t ti, uint32_t pltt, int s, int t, int *alfa) {
     return 0x7FFF;
 }
 
+// ---- texturas para el 3D por la GPU (gpu3d_gl.c) --------------------------------------------------------------
+// Huella de lo que usa una textura en la VRAM (sus texels, y en las comprimidas sus índices) y su paleta: si no
+// cambia, la textura ya subida a la GPU sigue valiendo.
+uint64_t gx_tex_huella(uint32_t ti, uint32_t pltt) {
+    static const int bits[8] = {0, 8, 2, 4, 8, 2, 8, 16};
+    int w = 8 << ((ti >> 20) & 7), h = 8 << ((ti >> 23) & 7), fmt = (ti >> 26) & 7;
+    uint32_t base = (ti & 0xFFFF) * 8, n = (uint32_t)(w * h * bits[fmt] / 8);
+    uint64_t x = 1469598103934665603ull;
+#define MEZCLA(b) (x = (x ^ (uint8_t)(b)) * 1099511628211ull)
+    for (uint32_t i = 0; i < n; i++) MEZCLA(tex8(base + i));
+    uint32_t pb = pltt * 16, np = 0;
+    switch (fmt) {
+    case 1: np = 64; break;
+    case 2: pb = pltt * 8; np = 8; break;
+    case 3: np = 32; break;
+    case 4: np = 512; break;
+    case 6: np = 16; break;
+    case 5: {  // los índices (2 bytes por bloque de 4x4) y la paleta hasta la entrada más alta que usen
+        uint32_t slot = (base & 0x7FFFF) >= 0x40000 ? 0x10000 : 0;
+        uint32_t info = 0x20000 + slot + ((base & 0x1FFFF) >> 1), mayor = 0;
+        for (uint32_t i = 0; i < n / 2; i += 2) {
+            uint16_t v = (uint16_t)(tex8(info + i) | tex8(info + i + 1) << 8);
+            MEZCLA(v); MEZCLA(v >> 8);
+            if ((uint32_t)(v & 0x3FFF) * 4 > mayor) mayor = (uint32_t)(v & 0x3FFF) * 4;
+        }
+        np = mayor + 8;
+        break;
+    }
+    }
+    for (uint32_t i = 0; i < np; i += 2) { uint16_t c = pal16(pb + i); MEZCLA(c); MEZCLA(c >> 8); }
+#undef MEZCLA
+    return x;
+}
+
+// La textura entera en RGBA8 (cada componente de 5 bits pasado a 8; alfa 0..31 también)
+void gx_tex_decodifica(uint32_t ti, uint32_t pltt, uint8_t *rgba) {
+    int w = 8 << ((ti >> 20) & 7), h = 8 << ((ti >> 23) & 7);
+    for (int t = 0; t < h; t++)
+        for (int s = 0; s < w; s++, rgba += 4) {
+            int a;
+            uint16_t c = texel(ti, pltt, s, t, &a);
+            rgba[0] = (uint8_t)((c & 31) * 255 / 31);
+            rgba[1] = (uint8_t)(((c >> 5) & 31) * 255 / 31);
+            rgba[2] = (uint8_t)(((c >> 10) & 31) * 255 / 31);
+            rgba[3] = (uint8_t)(a * 255 / 31);
+        }
+}
+
 typedef struct { float x, y, z, iw, r, g, b, s, t; } VP;  // vértice en pantalla (atributos / w)
 
 typedef struct {  // polígono listo para pintar
@@ -1035,7 +1083,14 @@ static int nvis_de(const Poli *lst, int n) {
     return v;
 }
 
+// 3D por la GPU (MKDS_GPU=1 o el menú F1; de momento solo en Windows): si no se puede, por la CPU
+volatile int g_gpu3d;
+void gx_pon_gpu(int si) { g_gpu3d = si; }
+int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf, uint16_t *color, uint8_t *alfa,
+               int an, int al);
+
 static void pinta_todo(void) {
+    if (g_gpu3d && gl3d_pinta(pp, npp, (int)sizeof(PP), trabajo.io, trabajo.wbuf, color_buf, alfa_buf, AN, AL)) return;
     for (int b = 0; b < nbandas; b++) SetEvent(ev_banda_ir[b]);
     WaitForMultipleObjects(nbandas, ev_banda_hecha, TRUE, INFINITE);
 }
@@ -1112,6 +1167,7 @@ static void arranca_hilos(void) {
     }
     AN = 256 * esc;
     AL = 192 * esc;
+    if (getenv("MKDS_GPU")) g_gpu3d = atoi(getenv("MKDS_GPU"));
     ev_trabajo = CreateEventW(NULL, FALSE, FALSE, NULL);
     ev_libre = CreateEventW(NULL, FALSE, TRUE, NULL);
     DWORD_PTR del_proceso = 0, del_sistema = 0;  // núcleos que puede usar el juego

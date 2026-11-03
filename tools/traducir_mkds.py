@@ -63,8 +63,9 @@ def puentes(d, ram):
     return res
 
 
-def overlays(ext, info, fijas):
-    """Cada overlay se traduce aparte (nombres A_o0_..., tabla con firmas)."""
+def overlays(ext, info, fijas, img9=None, escribir=True):
+    """Cada overlay se traduce aparte (nombres A_o0_..., tabla con firmas). Devuelve los destinos de sus llamadas
+    que caen en el código fijo (img9) y que no son funciones suyas (fijas)."""
     ovs = [ov for ov in info["overlays9"]]
     datos = {}
     for ov in ovs:
@@ -112,6 +113,9 @@ def overlays(ext, info, fijas):
                             nuevas = True
         if not nuevas:
             break
+    hacia_fijo = {k for rc in rcs.values() for k in rc.fuera if img9 and img9.has(k[0], 2) and k not in fijas}
+    if not escribir:
+        return hacia_fijo
     usados = []
     for n, rc in rcs.items():
         if not rc.funcs:
@@ -130,9 +134,10 @@ def overlays(ext, info, fijas):
     lineas.append(f"}};\nconst size_t g_noverlays = {len(usados)};\n")
     Recomp._save(os.path.join(RAIZ, "generado", "mkds", "overlays.c"), "".join(lineas))
     print(f"overlays traducidos: {usados}")
+    return hacia_fijo
 
 
-def arm9(ext, info):
+def arm9(ext, info, extra=(), escribir=True):
     with open(os.path.join(ext, "arm9.bin"), "rb") as f:
         arm9 = f.read()
     ram = info["arm9_ram"]
@@ -153,7 +158,8 @@ def arm9(ext, info):
     }
     entries = [(info["arm9_entry"], False)]
     parches = {0x021189D6: ("g_trucos & 1", "R[0] = 1;")}  # estado de cada copa: desbloqueada
-    return traduce("ARM9", img, entries, hooks, "mkds", parches=parches, debiles=entradas_extra("faltan.txt"))
+    return traduce("ARM9", img, entries, hooks, "mkds", escribir=escribir, parches=parches,
+                   debiles=set(entradas_extra("faltan.txt")) | set(extra))
 
 
 def arm7(ext, info):
@@ -188,8 +194,24 @@ def main():
     ext = os.path.join(RAIZ, "extraido")
     with open(os.path.join(ext, "info.json")) as f:
         info = json.load(f)
-    rc9 = arm9(ext, info)
-    overlays(ext, info, set(rc9.funcs))
+    # Funciones del código fijo a las que solo llama un overlay (BL de un overlay al código fijo): la traducción
+    # del código fijo no las ve. Antes faltaban y cerraban el juego al usarlas (el editor de escudo al guardar,
+    # 020CA688). Se traducen los overlays para saber cuáles son y el código fijo otra vez con ellas, hasta que no
+    # salga ninguna nueva (al añadir una, otra que antes era función puede quedar dentro de ella)
+    extra = set()
+    rc9 = arm9(ext, info, escribir=False)
+    for _ in range(4):
+        nuevas = overlays(ext, info, set(rc9.funcs), rc9.img, escribir=False) - extra
+        if not nuevas:
+            break
+        extra |= nuevas
+        print(f"  {len(extra)} funciones del código fijo que solo llaman los overlays: otra vez el ARM9 "
+              f"({', '.join(('T:' if t else '') + f'{a:08X}' for a, t in sorted(extra))})")
+        rc9 = arm9(ext, info, extra=extra, escribir=False)
+    rc9.write(os.path.join(RAIZ, "generado", "mkds"))
+    falta = overlays(ext, info, set(rc9.funcs), rc9.img)
+    if falta:
+        print(f"  (aún sin traducir, llamadas desde overlays: {sorted(falta)})")
     arm7(ext, info)
 
 

@@ -21,13 +21,10 @@
 
 extern "C" {
 void gx_pon_fps(int fps);                       // gpu3d.c: imágenes por segundo (intermedias)
+void gx_pon_gpu(int si);                         // gpu3d.c: 3D por la GPU
 void sonido_pon_volumen(int volumen, int silencio);  // sonido.c
 void mic_pon(int activo, int ganancia);          // microfono.c
 void nombre_cambia(void);                        // main_mkds.c: vuelve a leer MKDS_NOMBRE
-void online_crear(void);                         // wifi.c: salas del online
-void online_unirse(const char *codigo);
-void online_salir(void);
-int online_estado(char *codigo, int *jugadores);
 }
 
 // ---- cola de lo que llega del hilo de la ventana ------------------------------------------------------
@@ -91,6 +88,7 @@ static struct {
     char nombre[32];
     int idioma;       // 1 inglés, 2 francés, 3 alemán, 4 italiano, 5 español (al reiniciar)
     char ip[64];      // la del amigo (Radmin), para el multijugador
+    int gpu;          // 3D por la GPU (gpu3d_gl.c; solo Windows)
 } aj;
 static char idioma_menu[4] = "es";
 static int pestaña_pedida = -1, pestaña_actual;
@@ -123,6 +121,7 @@ static void lee_ajustes(void) {
     texto("MKDS_NOMBRE", aj.nombre, sizeof aj.nombre, "");
     aj.idioma = entero("MKDS_IDIOMA", 5);
     texto("MKDS_LOCAL_IP", aj.ip, sizeof aj.ip, "");
+    aj.gpu = entero("MKDS_GPU", 0);
     texto("MKDS_LAUNCHER_IDIOMA", idioma_menu, sizeof idioma_menu, "es");
 }
 
@@ -130,12 +129,14 @@ static void lee_ajustes(void) {
 static void guarda_ajustes(void) {
     char v[16][80];
     const char *claves[] = {"FPS", "ESCALA", "MOSTRAR_FPS", "VOLUMEN", "SILENCIO", "MICRO", "MICRO_GANANCIA",
-                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA"};
+                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION"};
     int n = (int)(sizeof claves / sizeof *claves);
     snprintf(v[0], 80, "%d", aj.fps); snprintf(v[1], 80, "%d", aj.escala); snprintf(v[2], 80, "%d", aj.mostrar_fps);
     snprintf(v[3], 80, "%d", aj.volumen); snprintf(v[4], 80, "%d", aj.silencio); snprintf(v[5], 80, "%d", aj.micro);
     snprintf(v[6], 80, "%d", aj.ganancia); snprintf(v[7], 80, "%s", aj.nombre); snprintf(v[8], 80, "%d", aj.idioma);
     snprintf(v[9], 80, "%s", aj.ip); snprintf(v[10], 80, "%d", ventana_pantalla_completa());
+    snprintf(v[11], 80, "%d", aj.gpu);
+    snprintf(v[12], 80, "%d", ventana_disposicion());
     static char lineas[128][256];
     int nl = 0, hecho[16] = {0};
     FILE *f = fopen("ajustes.ini", "r");
@@ -204,6 +205,23 @@ static const Texto textos[] = {
     {"Mostrar FPS", "Show FPS", "Afficher les FPS", "FPS anzeigen", "Mostra FPS"},
     {"En una esquina, también en pantalla completa.", "In a corner, also in fullscreen.",
      "Dans un coin, aussi en plein écran.", "In einer Ecke, auch im Vollbild.", "In un angolo, anche a schermo intero."},
+    {"Pantallas", "Screens", "Écrans", "Bildschirme", "Schermi"},
+    {"Una encima de otra", "One above the other", "L'un au-dessus de l'autre", "Übereinander", "Una sopra l'altra"},
+    {"La grande y la táctil al lado", "Big one with the touch screen beside it", "La grande et l'écran tactile à côté",
+     "Groß, Touchscreen daneben", "Quello grande e il touch accanto"},
+    {"La pantalla de arriba a todo el alto y la táctil pequeña a su derecha, abajo: juntas llenan una pantalla 16:9.",
+     "The top screen at full height and the touch screen small to its right, at the bottom: together they fill a 16:9 screen.",
+     "L'écran du haut sur toute la hauteur et l'écran tactile en petit à sa droite, en bas : ensemble, ils remplissent un écran 16:9.",
+     "Der obere Bildschirm in voller Höhe und der Touchscreen klein rechts daneben, unten: zusammen füllen sie einen 16:9-Bildschirm.",
+     "Lo schermo superiore a tutta altezza e il touch piccolo alla sua destra, in basso: insieme riempiono uno schermo 16:9."},
+    {"3D con la tarjeta gráfica (experimental)", "3D on the graphics card (experimental)",
+     "3D sur la carte graphique (expérimental)", "3D auf der Grafikkarte (experimentell)",
+     "3D sulla scheda grafica (sperimentale)"},
+    {"Gasta mucha menos CPU, sobre todo con resolución alta y más FPS. Si ves algo raro, quítalo y dínoslo.",
+     "Uses much less CPU, especially with high resolution and more FPS. If something looks wrong, turn it off and tell us.",
+     "Utilise beaucoup moins le processeur, surtout en haute résolution et avec plus de FPS. Si quelque chose cloche, désactive-le et dis-le-nous.",
+     "Braucht viel weniger CPU, besonders bei hoher Auflösung und mehr FPS. Wenn etwas falsch aussieht, schalte es aus und sag uns Bescheid.",
+     "Usa molta meno CPU, soprattutto con risoluzione alta e più FPS. Se vedi qualcosa di strano, disattivalo e diccelo."},
     {"Conectados", "Connected", "Connectées", "Verbunden", "Collegati"},
     {"Ningún mando conectado. Puedes jugar con el teclado.", "No controller connected. You can play with the keyboard.",
      "Aucune manette connectée. Tu peux jouer au clavier.", "Kein Controller verbunden. Du kannst mit der Tastatur spielen.",
@@ -484,6 +502,12 @@ static void pestaña_graficos(void) {
     bool b = pc != 0;
     if (ImGui::Checkbox(T("Pantalla completa"), &b)) ventana_pide_pantalla_completa(b);
     ayuda(T("Las dos pantallas lado a lado. También con F11."));
+    titulo(T("Pantallas"));
+    int d = ventana_disposicion();
+    if (ImGui::RadioButton(T("Una encima de otra"), d == 0)) { ventana_pon_disposicion(0); cambiado = 1; }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(T("La grande y la táctil al lado"), d == 1)) { ventana_pon_disposicion(1); cambiado = 1; }
+    ayuda(T("La pantalla de arriba a todo el alto y la táctil pequeña a su derecha, abajo: juntas llenan una pantalla 16:9."));
     titulo(T("Imágenes por segundo"));
     static const int fpss[] = {60, 120, 180, 240};
     for (int i = 0; i < 4; i++) {
@@ -502,6 +526,16 @@ static void pestaña_graficos(void) {
         if (ImGui::RadioButton(t, aj.escala == i)) { aj.escala = i; cambiado = 1; }
     }
     ayuda(T("Se aplica al volver a abrir el juego."));
+#ifdef _WIN32
+    ImGui::Spacing();
+    bool gpu = aj.gpu != 0;
+    if (ImGui::Checkbox(T("3D con la tarjeta gráfica (experimental)"), &gpu)) {
+        aj.gpu = gpu;
+        gx_pon_gpu(aj.gpu);  // al momento
+        cambiado = 1;
+    }
+    ayuda(T("Gasta mucha menos CPU, sobre todo con resolución alta y más FPS. Si ves algo raro, quítalo y dínoslo."));
+#endif
     ImGui::Spacing();
     bool m = aj.mostrar_fps != 0;
     if (ImGui::Checkbox(T("Mostrar FPS"), &m)) { aj.mostrar_fps = m; cambiado = 1; }
@@ -578,60 +612,6 @@ static void pestaña_juego(void) {
     ayuda(T("Solo si no os veis en la lista de grupos (por ejemplo, su IP de Radmin). Vacío = buscar solo."));
 }
 
-// el estado que da online_estado (wifi.c, ONL_...)
-enum { ONL_NADA, ONL_CONECTANDO, ONL_SIN_SERVIDOR, ONL_SIN_STUN, ONL_NO_EXISTE, ONL_VERSION, ONL_LLENA, ONL_EN_SALA,
-       ONL_UNIDO, ONL_CERRADA };
-
-static void pestaña_online(void) {
-    char codigo[8] = "";
-    int jugadores = 0;
-    int e = online_estado(codigo, &jugadores);
-    titulo(T("Jugar por internet"));
-    ayuda(T("Hasta 8 jugadores, sin Radmin. Uno crea una sala y pasa el código a los demás; luego se juega con el Multijugador del juego."));
-    ImGui::Spacing();
-    if (e == ONL_EN_SALA || e == ONL_UNIDO) {
-        ImGui::TextUnformatted(T(e == ONL_EN_SALA ? "Tu sala" : "Estás en la sala"));
-        ImGui::SetWindowFontScale(2.2f);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.79f, 0.25f, 1));
-        ImGui::TextUnformatted(codigo);
-        ImGui::PopStyleColor();
-        ImGui::SetWindowFontScale(1);
-        if (e == ONL_EN_SALA) {
-            ImGui::Text(T("Jugadores en la sala: %d"), jugadores + 1);
-            ayuda(T("Pasa el código a tus amigos. Luego, en el juego: Multijugador > Crear un grupo, y LISTO cuando estén todos."));
-        } else {
-            ayuda(T("Ahora, en el juego: Multijugador y elige el grupo de la lista."));
-        }
-        ImGui::Spacing();
-        if (ImGui::Button(T("Salir de la sala"))) online_salir();
-        return;
-    }
-    if (e == ONL_CONECTANDO) { ImGui::TextUnformatted(T("Conectando…")); return; }
-    static const char *errores[] = {NULL, NULL, "No se pudo conectar con el servidor de salas. ¿Hay internet?",
-                                    "No se pudo averiguar tu dirección en internet.", "Esa sala no existe (o ya se cerró).",
-                                    "Esa sala es de otra versión del juego: actualizad los dos.", "La sala está llena (8 jugadores).",
-                                    NULL, NULL, "La sala se ha cerrado."};
-    if (e < 10 && errores[e]) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.54f, 0.48f, 1));
-        ImGui::PushTextWrapPos(0);
-        ImGui::TextUnformatted(T(errores[e]));
-        ImGui::PopTextWrapPos();
-        ImGui::PopStyleColor();
-        ImGui::Spacing();
-    }
-    if (ImGui::Button(T("Crear sala"), ImVec2(-1, 0))) online_crear();
-    ImGui::Spacing();
-    titulo(T("Unirse a una sala"));
-    static char pon[8];
-    ImGui::SetNextItemWidth(160 * ImGui::GetIO().FontGlobalScale * 34 / 21);
-    ImGui::InputText("##codigo", pon, 7, ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CharsNoBlank);
-    ImGui::SameLine();
-    ImGui::BeginDisabled(strlen(pon) != 6);
-    if (ImGui::Button(T("Unirse"))) online_unirse(pon);
-    ImGui::EndDisabled();
-    ayuda(T("Escribe el código de 6 letras que te pase el que creó la sala."));
-}
-
 extern "C" int wfc_ping_ms(void);  // wfc.c: el ping con los rivales del online (-1 si no hay)
 
 static void contador_fps(float W, float s) {
@@ -691,7 +671,6 @@ extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
             if (pestaña(T("Mandos"), 1)) { ImGui::BeginChild("m", ImVec2(0, -pie)); pestaña_mandos(); ImGui::EndChild(); ImGui::EndTabItem(); }
             if (pestaña(T("Audio"), 2)) { ImGui::BeginChild("a", ImVec2(0, -pie)); pestaña_audio(); ImGui::EndChild(); ImGui::EndTabItem(); }
             if (pestaña(T("Juego"), 3)) { ImGui::BeginChild("j", ImVec2(0, -pie)); pestaña_juego(); ImGui::EndChild(); ImGui::EndTabItem(); }
-            if (pestaña("Online", 4)) { ImGui::BeginChild("o", ImVec2(0, -pie)); pestaña_online(); ImGui::EndChild(); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
         pestaña_pedida = -1;

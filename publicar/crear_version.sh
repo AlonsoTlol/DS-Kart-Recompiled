@@ -9,11 +9,12 @@ cd "$(dirname "$0")/.."
 V=$(grep -o 'VERSION_NUM = "[0-9.]*"' launcher/Preparar.cs | grep -o '[0-9.]*')
 sh launcher/compilar.sh
 D=publicar/tmp/DS-Kart-Recompiled
-rm -rf publicar/tmp && mkdir -p $D/tools $D/runtime $D/linux
+rm -rf publicar/tmp && mkdir -p $D/tools $D/runtime $D/linux $D/mac
 cp Launcher.exe LICENSE faltan.txt faltan7.txt publicar/README.txt $D/
 cp tools/nds_rom.py tools/recomp.py tools/traducir_mkds.py $D/tools/
 cp runtime/*.c runtime/*.cpp runtime/*.h $D/runtime/ && cp -r runtime/imgui $D/runtime/  # el menú (Dear ImGui)
 cp linux/preparar.sh linux/jugar.sh linux/LEEME.txt $D/linux/  # Linux (beta): sh linux/jugar.sh
+cp mac/jugar.command mac/LEEME.txt $D/mac/  # macOS (beta): doble clic en mac/jugar.command
 rm -f publicar/*.zip publicar/portada.mp4
 cp portada.mp4 $D/
 /c/Users/Administrator/AppData/Local/Programs/Python/Python312/python.exe publicar/zip_version.py publicar/tmp/DS-Kart-Recompiled publicar/DS-Kart-Recompiled-v$V.zip

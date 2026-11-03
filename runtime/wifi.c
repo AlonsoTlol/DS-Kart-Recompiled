@@ -1249,6 +1249,10 @@ int wifi_orden(uint32_t dir) {
         // recibe paquetes de red (wfc.c hace de router). Respuesta (021A4F10): +4 estado 14 (empieza)
         dcf_recibe = p[0];
         dcf_recibe_tam = p[1];
+        // errno de la librería C del juego (0217EE90): el DWC lee el userid de 13 cifras del \lc\ de gpcm con
+        // strtol y lo deja en 34 (ERANGE); la prueba de conexión (021874EC) mira errno después de su strtol sin
+        // ponerlo antes a 0, así que al volver a entrar sin cerrar el juego daba error 52200
+        pon32(0x0217EE90, 0);
         pon_estado(DCF_CHILD);   // si no, SET_DCF_DATA no deja enviar nada (y el WCM acaba desconectando: error 710)
         pon32(estado + 0x10, 1);  // dcf_flag (WM_SetDCFData lo mira, 02144484)
         uint32_t c = bufer_respuesta();

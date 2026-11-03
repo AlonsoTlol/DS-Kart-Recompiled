@@ -1,0 +1,76 @@
+DS Kart Recompiled for macOS (beta, not tested yet)
+===================================================
+(Español más abajo)
+
+Mario Kart DS for Mac, no emulator. Made by alontube together with Claude.
+The game is NOT included: you need a dump of your own cartridge.
+This is the Linux version built for the Mac. Nobody has tried it on a real Mac
+yet: if you do, please tell us how it went (works / doesn't / what the
+Terminal says) in an issue on GitHub. Works on Intel and Apple chips (M1...).
+
+1. Install what's needed (once). Open the Terminal app and run:
+     xcode-select --install
+   (Apple's free command line tools: clang and python3). Then install
+   Homebrew (https://brew.sh, one line to paste) and run:
+     brew install sdl2
+
+2. Copy your EUROPEAN Mario Kart DS ROM (game code AMCP) to rom/mkds.nds
+
+3. Double-click mac/jugar.command. If macOS says it can't be opened
+   because it's from an unidentified developer: right-click it > Open > Open.
+   Or in the Terminal, inside this folder:
+     sh mac/jugar.command
+
+   The first time it translates your ROM's code and compiles it for your Mac:
+   it takes a while (5 to 30 minutes). After that it starts instantly.
+
+Settings: in ajustes.ini (created the first time): NOMBRE (your name), ESCALA
+(1-4, 3D resolution), FPS (60/120/180/240), PANTALLA_COMPLETA (fullscreen 0/1),
+IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1),
+DISPOSICION (0 screens one above the other, 1 big top screen with the small touch screen beside it, 16:9).
+
+Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
+Enter = Start, Backspace = Select, mouse = stylus on the bottom screen,
+F11 = fullscreen (fn+F11 on some keyboards), F1 = settings menu.
+Xbox, PlayStation and generic controllers work through SDL.
+
+Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
+
+
+DS Kart Recompiled para macOS (beta, aún sin probar)
+====================================================
+
+Mario Kart DS para Mac, sin emulador. Hecho por alontube junto con Claude.
+El juego NO viene incluido: necesitas una copia de tu propio cartucho.
+Es la versión de Linux compilada para el Mac. Todavía nadie la ha probado en un
+Mac de verdad: si lo haces, cuéntanos en un issue de GitHub cómo ha ido
+(funciona / no funciona / qué sale en la Terminal). Vale para Intel y para
+los chips de Apple (M1...).
+
+1. Instala lo necesario (una sola vez). Abre la app Terminal y escribe:
+     xcode-select --install
+   (las herramientas gratuitas de Apple: clang y python3). Después instala
+   Homebrew (https://brew.sh, una línea para pegar) y escribe:
+     brew install sdl2
+
+2. Copia tu ROM de Mario Kart DS EUROPEO (código AMCP) a rom/mkds.nds
+
+3. Doble clic en mac/jugar.command. Si macOS dice que no se puede abrir por
+   ser de un desarrollador no identificado: clic derecho > Abrir > Abrir.
+   O en la Terminal, dentro de esta carpeta:
+     sh mac/jugar.command
+
+   La primera vez traduce el código de tu ROM y lo compila para tu Mac:
+   tarda bastante (de 5 a 30 minutos). Las siguientes veces arranca al momento.
+
+Ajustes: en ajustes.ini (se crea la primera vez): NOMBRE, ESCALA (1-4, resolución
+del 3D), FPS (60/120/180/240), PANTALLA_COMPLETA (0/1), IDIOMA (1 inglés,
+2 francés, 3 alemán, 4 italiano, 5 español), MICRO (0/1), DISPOSICION (0 una
+pantalla encima de otra, 1 la de arriba grande y la táctil pequeña al lado, 16:9).
+
+Controles: flechas = cruceta, X = A, Z = B, S = X, A = Y, Q = L, W = R,
+Enter = Start, Retroceso = Select, ratón = lápiz en la pantalla de abajo,
+F11 = pantalla completa (fn+F11 en algunos teclados), F1 = menú de ajustes.
+Mandos de Xbox, PlayStation y genéricos: funcionan con SDL.
+
+Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues

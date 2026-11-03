@@ -2,6 +2,7 @@
 #include "ds.h"
 #include <stdio.h>
 #include <stdlib.h>
+void apunta_fallo(const char *que);  // main_mkds.c: también en fallos.txt
 
 static Func buscar(const FuncEntry *tabla, size_t n, uint32_t key) {
     size_t lo = 0, hi = n;
@@ -82,6 +83,12 @@ _Noreturn void cpu_missing(Cpu *c, uint32_t addr) {
         FILE *m = fopen(vr, "wb");
         if (m) { fwrite(g_main, 1, sizeof g_main, m); fwrite(g_itcm, 1, sizeof g_itcm, m); fwrite(g_dtcm, 1, sizeof g_dtcm, m); fclose(m); }
     }
+    {
+        char m[96];
+        snprintf(m, sizeof m, "%s del %s en %08X", (addr & ~1u) ? "falta código traducido" : "salto a 0",
+                 c->id ? "ARM7" : "ARM9", addr & ~1u);
+        apunta_fallo(m);
+    }
     if (!(addr & ~1u)) exit(2);  // saltar a 0 es un fallo, no código que falte
     // se apunta para que la siguiente traducción la incluya como función
     FILE *f = fopen(c->id ? "faltan7.txt" : "faltan.txt", "a");
@@ -93,6 +100,11 @@ _Noreturn void cpu_undefined(Cpu *c, uint32_t addr, uint32_t op) {
     fprintf(stderr, "\n[recomp] instrucción no soportada %08X en %08X (%s)\n", op, addr,
             c->id ? "ARM7" : "ARM9");
     volcado(c);
+    {
+        char m[96];
+        snprintf(m, sizeof m, "instrucción no soportada %08X en %08X (%s)", op, addr, c->id ? "ARM7" : "ARM9");
+        apunta_fallo(m);
+    }
     exit(3);
 }
 

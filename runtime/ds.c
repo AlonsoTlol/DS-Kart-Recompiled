@@ -933,12 +933,26 @@ void wfc_firmware_pon_id(uint64_t id) {
     uint8_t *a = firmware + WFC_INI;
     uint64_t viejo = 0;
     for (int i = 0; i < 6; i++) viejo |= (uint64_t)a[0xF0 + i] << (8 * i);
-    if ((viejo & 0x7FFFFFFFFFFull) == (id & 0x7FFFFFFFFFFull)) return;
-    for (int i = 0; i < 6; i++) a[0xF0 + i] = (uint8_t)(id >> (8 * i));
-    uint16_t c = crc16(0, a, 0xFE);
-    memcpy(a + 0xFE, &c, 2);
-    wfc_cambiado = 1;
-    guarda_wfc();
+    if ((viejo & 0x7FFFFFFFFFFull) != (id & 0x7FFFFFFFFFFull)) {
+        for (int i = 0; i < 6; i++) a[0xF0 + i] = (uint8_t)(id >> (8 * i));
+        uint16_t c = crc16(0, a, 0xFE);
+        memcpy(a + 0xFE, &c, 2);
+        wfc_cambiado = 1;
+        guarda_wfc();
+    }
+    // El juego lee estos ajustes al arrancar y trabaja con su copia en memoria: sin cambiarla también, al volver a
+    // conectar sin cerrar el juego seguía viendo el ID viejo ("no coinciden"). La copia se reconoce por el SSID.
+    extern uint8_t g_main[0x400000];
+    for (uint32_t o = 0x40; o + 0xC0 <= sizeof g_main; o += 4) {
+        if (memcmp(g_main + o, "DSKartRecompiled", 16)) continue;
+        uint8_t *b = g_main + o - 0x40;
+        uint16_t c;
+        memcpy(&c, b + 0xFE, 2);
+        if (c != crc16(0, b, 0xFE) || b[0xE7] != 0) continue;  // solo bloques completos y válidos
+        for (int i = 0; i < 6; i++) b[0xF0 + i] = (uint8_t)(id >> (8 * i));
+        c = crc16(0, b, 0xFE);
+        memcpy(b + 0xFE, &c, 2);
+    }
 }
 
 // Un firmware inventado con los ajustes de la consola (nombre, idioma, táctil)
