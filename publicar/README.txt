@@ -26,12 +26,10 @@ If Windows says "Windows protected your PC": "More info" > "Run anyway"
 Local multiplayer: over Radmin VPN or the same network. One player presses
 "Create a group", the other picks it from the list and the first one presses
 READY. If Windows asks about the firewall, press Allow.
-Online: not available yet; coming soon.
+Online: from the Wi-Fi menu inside the game (beta).
 
-LINUX (beta): see linux/LEEME.txt. In short: install python3, clang and SDL2
-(Ubuntu/Debian: sudo apt install python3 clang libsdl2-dev), copy your ROM to
-rom/mkds.nds and run: sh linux/jugar.sh  (settings go in ajustes.ini; there is
-no launcher window on Linux yet).
+This zip is for Windows. Linux and macOS (beta) have their own zip on the
+download page: https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest
 
 WARNING: these are the first versions and they have plenty of bugs. If you find
 one, please report it in Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
@@ -63,12 +61,10 @@ todas formas" (sale porque el programa no está firmado).
 Multijugador local: por Radmin VPN o en la misma red. Uno pulsa "Crear un grupo",
 el otro lo elige en la lista y el primero pulsa LISTO. Si Windows pregunta por el
 firewall, dale a Permitir.
-Online: todavía no está disponible; llegará pronto.
+Online: desde el menú Wi-Fi del propio juego (beta).
 
-LINUX (beta): mira linux/LEEME.txt. Resumen: instala python3, clang y SDL2
-(Ubuntu/Debian: sudo apt install python3 clang libsdl2-dev), copia tu ROM a
-rom/mkds.nds y ejecuta: sh linux/jugar.sh  (los ajustes van en ajustes.ini; en
-Linux todavía no hay ventana de launcher).
+Este zip es para Windows. Linux y macOS (beta) tienen su propio zip en la página
+de descargas: https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest
 
 AVISO: son las primeras versiones y tienen muchos bugs. Si encuentras alguno,
 súbelo a Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues

@@ -38,7 +38,7 @@ void menu_pon_fps(int juego, int tres_d, int pantalla);  // cada segundo (ventan
 // lo que da cada ventana al menú
 int ventana_pantalla_completa(void);
 void ventana_pide_pantalla_completa(int si);  // se hace en el hilo de la ventana (ventana_mensajes)
-int ventana_disposicion(void);                // 0 una encima de otra, 1 la táctil pequeña al lado (issue #11)
+int ventana_disposicion(void);                // 0 las dos iguales, 1 la táctil al lado, 2 superpuesta (#11)
 void ventana_pon_disposicion(int d);          // también en el hilo de la ventana
 int ventana_mandos(char nombres[][64], int max);  // los mandos conectados
 

@@ -159,6 +159,15 @@ static int16_t amplifica(int s) {
     return (int16_t)(s > 32767 ? 32767 : s < -32768 ? -32768 : s);
 }
 
+// Soplido "de DS": ruido grave y saturado. Es la forma que el análisis del juego da por buena (con un soplido de un
+// micro de PC, aunque se amplifique, unas veces colaba y otras no: el globo se inflaba "a veces")
+static int16_t soplido_ds(void) {
+    static double s;
+    s = 0.95 * s + (rand() % 2001 - 1000) / 1000.0 * 20000 * 0.45;
+    int v = (int)s * 8;
+    return (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+}
+
 // la siguiente muestra (silencio si no hay micrófono o aún no ha llegado nada)
 int16_t mic_pc_muestra(void) {
     // MKDS_MICRO_PRUEBA=N: como si alguien soplara con fuerza N (de 32767), para probar sin micrófono: ruido
@@ -167,16 +176,33 @@ int16_t mic_pc_muestra(void) {
     static double grave;
     if (prueba < 0) prueba = getenv("MKDS_MICRO_PRUEBA") ? atoi(getenv("MKDS_MICRO_PRUEBA")) : 0;
     if (prueba == 1) prueba = 32767;
+    int s;
     if (prueba) {
         static double k = -1;  // MKDS_MICRO_GRAVE: cuánto se suaviza el ruido (0 = blanco, 0,99 = muy grave)
         if (k < 0) k = getenv("MKDS_MICRO_GRAVE") ? atof(getenv("MKDS_MICRO_GRAVE")) : 0.9;
         grave = k * grave + (rand() % 2001 - 1000) / 1000.0 * prueba * 0.45;
-        return amplifica((int)grave);
+        s = (int)grave;
+    } else {
+        if (!entrada) return 0;
+        if (lee == escribe) recoge();
+        if (lee == escribe) return 0;
+        // sin retraso: el anillo solo se vacía al ritmo del juego y, con los relojes del micro y del juego algo
+        // distintos, se acumulaba hasta un segundo; se deja en ~100 ms como mucho (lo más viejo se tira)
+        int atraso = (escribe - lee + 8192) % 8192;
+        if (atraso > 800) lee = (escribe - 400 + 8192) % 8192;
+        s = anillo[lee];
+        lee = (lee + 1) % 8192;
     }
-    if (!entrada) return 0;
-    if (lee == escribe) recoge();
-    if (lee == escribe) return 0;
-    int16_t s = anillo[lee];
-    lee = (lee + 1) % 8192;
-    return amplifica(s);
+    // ¿soplando? Volumen medio (ya amplificado) por encima de MKDS_MICRO_UMBRAL (6000 de 32767) durante unos ms:
+    // entonces el juego recibe el soplido "de DS", y sigue 100 ms más para que no se corte entre ráfagas
+    static int umbral = -1;
+    static double volumen;
+    static int sigue;
+    if (umbral < 0) umbral = getenv("MKDS_MICRO_UMBRAL") && atoi(getenv("MKDS_MICRO_UMBRAL")) > 0
+                             ? atoi(getenv("MKDS_MICRO_UMBRAL")) : 6000;
+    int16_t a = amplifica(s);
+    volumen = 0.99 * volumen + 0.01 * (a < 0 ? -(double)a : a);
+    if (volumen > umbral) sigue = 800;
+    if (sigue > 0) { sigue--; return soplido_ds(); }
+    return a;
 }

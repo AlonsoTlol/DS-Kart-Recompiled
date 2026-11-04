@@ -684,6 +684,8 @@ typedef struct {  // lo que necesita el hilo de pintar (copiado al empezar la es
     uint8_t io[0x400];
     int wbuf, vp_x1, vp_y1, vp_x2, vp_y2, lst;
     int interp;  // se pueden hacer imágenes intermedias con la escena anterior
+    int doble;   // 3D en las dos pantallas (captura alternando): cada vista viene cada dos fotogramas
+    int vista;   // cuál de las dos es (con la suya se empareja); si no, 0
 } Trabajo;
 
 static PP pp[MAX_POLIS];
@@ -705,11 +707,13 @@ typedef struct {
     uint8_t alfa[256 * 192];
     uint16_t hd_color[MAXP];        // a tamaño grande (reescalado)
     uint8_t hd_alfa[MAXP];
-    uint16_t sub_color[3][MAXP];    // imágenes intermedias entre la escena anterior y esta (a tamaño 'esc')
-    uint8_t sub_alfa[3][MAXP];
+    uint16_t sub_color[7][MAXP];    // imágenes intermedias entre la escena anterior y esta (a tamaño 'esc')
+    uint8_t sub_alfa[7][MAXP];
     int nsub;
+    int doble;                      // de una presentación con 3D en las dos pantallas: del fotograma de antes del anterior
 } Salida;
-static Salida salidas[3];
+#define NSAL 4
+static Salida salidas[NSAL];
 static volatile int salida_actual, polis_ultima;
 static volatile uint64_t cont_frames, cont_saltadas;
 volatile double g_render_ms_suma, g_render_ms_max;
@@ -925,8 +929,12 @@ void gx_pon_fps(int fps) {
     int n = fps / 60 - 1;
     sub_por_escena = n < 0 ? 0 : n > 3 ? 3 : n;
 }
-static struct { Vert v[4]; int n; uint32_t attr, teximage, pltt; } ant[MAX_POLIS];  // la escena anterior
-static int nant;
+// La escena anterior; con 3D en las dos pantallas, una por vista
+typedef struct { Vert v[4]; int n; uint32_t attr, teximage, pltt; } Ant;
+static Ant ant_v[2][MAX_POLIS];
+static int nant_v[2], vista;
+#define ant ant_v[vista]
+#define nant nant_v[vista]
 static int pareja[MAX_POLIS];  // para cada polígono de la escena: su pareja en la anterior, o -1
 static Poli intermedia[MAX_POLIS];
 
@@ -993,6 +1001,26 @@ static void movimiento_general(const Poli *lst, int n, float *gx, float *gy) {
     *gy = movs_y[m / 2];
 }
 
+// Las coordenadas de textura de cada vértice casi iguales que en la escena anterior (hasta 1/4 de la textura: las
+// animadas y las de reflejos cambian poco de una escena a otra). El suelo de un circuito son muchos polígonos con la
+// misma textura: al avanzar, el juego cambia qué trozos dibuja y en qué orden, y un trozo se emparejaba con otro;
+// en la imagen intermedia se mezclaban sus coordenadas y la textura salía corrida o rara un instante
+volatile int g_parejas_uv;  // parejas elegidas con otras coordenadas (solo con MKDS_EMPAREJA_SIN_UV; MKDS_MIDE)
+static int uv_igual(const Poli *p, int j) {
+    float w = (float)(8 << ((p->teximage >> 20) & 7)) / 4, h = (float)(8 << ((p->teximage >> 23) & 7)) / 4;
+    for (int k = 0; k < p->ncrudo; k++)
+        if (fabsf(ant[j].v[k].s - p->crudo[k].s) > w || fabsf(ant[j].v[k].t - p->crudo[k].t) > h) return 0;
+    return 1;
+}
+static int uv_cerca(const Poli *p, int j) {
+    static int sin = -1;  // MKDS_EMPAREJA_SIN_UV=1: como antes (para comparar)
+    if (sin < 0) sin = getenv("MKDS_EMPAREJA_SIN_UV") != NULL;
+    return sin || uv_igual(p, j);
+}
+
+// con 3D en las dos pantallas cada vista va de dos en dos fotogramas: en ese tiempo se mueve el doble
+static float margen_mov = 1;
+
 static int empareja(const Poli *lst, int n) {
     int j = 0, hechos = 0;
     memset(usado, 0, (size_t)nant);
@@ -1017,8 +1045,9 @@ static int empareja(const Poli *lst, int n) {
             if (!usado[k] && mismo(&lst[i], k)) { en_su_sitio = k; break; }
         if (en_su_sitio >= 0) {
             float t, d = desplazamiento(&lst[i], en_su_sitio, gx, gy, &t);
-            if (d <= 0.08f + 0.25f * t) {
+            if (d <= (0.08f + 0.25f * t) * margen_mov && uv_cerca(&lst[i], en_su_sitio)) {
                 pareja[i] = en_su_sitio;
+                if (!uv_igual(&lst[i], en_su_sitio)) g_parejas_uv++;
                 usado[en_su_sitio] = 1;
                 j = en_su_sitio + 1;
                 hechos++;
@@ -1031,11 +1060,12 @@ static int empareja(const Poli *lst, int n) {
         for (int k = j > 16 ? j - 16 : 0; k < nant && k < j + 64; k++) {
             if (usado[k] || !mismo(&lst[i], k)) continue;
             float t, d = desplazamiento(&lst[i], k, gx, gy, &t);
-            if (d < mejor_d) { mejor_d = d; mejor = k; tam = t; }
+            if (d < mejor_d && uv_cerca(&lst[i], k)) { mejor_d = d; mejor = k; tam = t; }
         }
         // se tiene que mover casi como la escena (un objeto que "salta" a otro igual no lo hace)
-        if (mejor < 0 || mejor_d > 0.08f + 0.25f * tam) continue;
+        if (mejor < 0 || mejor_d > (0.08f + 0.25f * tam) * margen_mov) continue;
         pareja[i] = mejor;
+        if (!uv_igual(&lst[i], mejor)) g_parejas_uv++;
         usado[mejor] = 1;
         j = mejor + 1;
         hechos++;
@@ -1054,7 +1084,7 @@ static int interpola(const Poli *lst, int n, float t) {
         for (int k = 0; k < q->ncrudo; k++) {
             const Vert *a = &ant[j].v[k], *b = &lst[i].crudo[k];
             float esc_w = fmaxf(fabsf(a->w), fabsf(b->w)) + 1e-3f;
-            if ((fabsf(a->x - b->x) + fabsf(a->y - b->y)) / esc_w > 0.6f) lejos = 1;  // salto (cámara, reaparece)
+            if ((fabsf(a->x - b->x) + fabsf(a->y - b->y)) / esc_w > 0.6f * margen_mov) lejos = 1;  // salto (cámara, reaparece)
             v[k].x = a->x + (b->x - a->x) * t; v[k].y = a->y + (b->y - a->y) * t;
             v[k].z = a->z + (b->z - a->z) * t; v[k].w = a->w + (b->w - a->w) * t;
             v[k].r = a->r + (b->r - a->r) * t; v[k].g = a->g + (b->g - a->g) * t; v[k].b = a->b + (b->b - a->b) * t;
@@ -1105,9 +1135,14 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
         QueryPerformanceCounter(&t0);
         const Poli *lst = polis[trabajo.lst];
         int n = npolis[trabajo.lst];
-        int otra = (salida_actual + 1) % 3;
+        int otra = (salida_actual + 1) % NSAL;
         Salida *S = &salidas[otra];
-        int nsub = trabajo.interp && nant > 0 ? sub_por_escena : 0;
+        vista = trabajo.vista;
+        margen_mov = trabajo.doble ? 2.0f : 1.0f;
+        // con 3D en las dos pantallas, cada vista cubre dos fotogramas: el doble de pasos (video.c los reparte)
+        int pasos = trabajo.doble ? (sub_por_escena + 1) * 2 - 1 : sub_por_escena;
+        if (pasos > 7) pasos = 7;
+        int nsub = trabajo.interp && nant > 0 ? pasos : 0;
         // En un PC justo no da tiempo a pintar todas las intermedias antes de la escena siguiente, y entonces
         // se saltaban escenas de verdad (el 3D a tirones). Se pintan las que quepan en ~3/4 de un fotograma
         // según lo que ha tardado cada imagen hasta ahora.
@@ -1115,6 +1150,7 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
             int caben = (int)(12.5 / ms_imagen) - 1;
             if (caben < nsub) nsub = caben < 0 ? 0 : caben;
         }
+        if (trabajo.doble && nsub && !(nsub & 1)) nsub--;  // impar: la mitad de los pasos cae en un fotograma justo
         // casi nada empareja (corte de cámara, otra pantalla): esta vez sin intermedias
         if (nsub && empareja(lst, n) * 2 < nvis_de(lst, n)) nsub = 0;
         for (int j = 1; j <= nsub; j++) {
@@ -1125,6 +1161,7 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
             memcpy(S->sub_alfa[j - 1], alfa_buf, (size_t)AN * AL);
         }
         S->nsub = nsub;
+        S->doble = trabajo.doble;
         prepara(&trabajo, lst, n);
         pinta_todo();
         guarda_anterior(lst, n);
@@ -1217,7 +1254,14 @@ void gx_vblank(const uint8_t *io9) {
     trabajo.lst = lista;
     lista ^= 1;            // la otra lista se empieza a llenar ya
     npolis[lista] = nvisibles[lista] = 0;
-    trabajo.interp = !al_momento;  // con la captura encendida (presentación) no hay imágenes intermedias
+    // Con la captura encendida (presentación) el juego alterna las pantallas cada fotograma (POWCNT1 bit 15). Si
+    // alterna de verdad, cada vista se interpola con su escena anterior; con otros usos de la captura, sin intermedias
+    static int bit_antes = -1;
+    int bit = io9[0x305] >> 7;
+    trabajo.doble = al_momento && bit != bit_antes && sub_por_escena > 0;
+    bit_antes = bit;
+    trabajo.vista = trabajo.doble ? bit : 0;
+    trabajo.interp = !al_momento || trabajo.doble;
     if (al_momento) {  // la anterior ya está pintada (se esperó arriba): esa es la que se enseña
         indice_fijo = salida_actual;
         fijo = 1;
@@ -1235,6 +1279,11 @@ const uint8_t *gx_hd_alfa(void) { return salidas[gx_indice()].hd_alfa; }
 int gx_nsub(int i) { return salidas[i].nsub; }
 const uint16_t *gx_sub_color(int i, int j) { return salidas[i].sub_color[j]; }
 const uint8_t *gx_sub_alfa(int i, int j) { return salidas[i].sub_alfa[j]; }
+// La presentación con 3D en las dos pantallas: juego de salidas de cada vista y su imagen final
+int gx_doble(int i) { return salidas[i].doble; }
+int gx_anterior(int i) { return (i + NSAL - 1) % NSAL; }
+const uint16_t *gx_fin_color(int i) { return esc > 1 ? salidas[i].hd_color : salidas[i].color; }
+const uint8_t *gx_fin_alfa(int i) { return esc > 1 ? salidas[i].hd_alfa : salidas[i].alfa; }
 uint64_t gx_frames(void) { return cont_frames; }
 
 void gx_depura(void) {

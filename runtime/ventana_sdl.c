@@ -61,43 +61,62 @@ static int64_t reloj(void) {
 }
 int64_t ventana_reloj(void) { return reloj(); }
 
-// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 una encima de otra (lado a lado en pantalla
-// completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y abajo a la derecha
-// (issue #11): juntas son 16:9. La táctil va en ov_*
+// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 las dos iguales (una sobre otra en ventana,
+// lado a lado en pantalla completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y
+// abajo a la derecha: juntas son 16:9; 2 la de arriba entera y la táctil pequeña superpuesta en esa esquina (issue
+// #11). La táctil va en ov_*
 static int disposicion;
 static int ov_x, ov_y, ov_w, ov_h;
 static volatile int pide_disp = -1;  // el menú la cambia: se hace en ventana_mensajes
 int ventana_disposicion(void) { return disposicion; }
-void ventana_pon_disposicion(int d) { pide_disp = d ? 1 : 0; }
+void ventana_pon_disposicion(int d) { pide_disp = d >= 0 && d <= 2 ? d : 0; }
 
 static void calcula_destino(void) {
     int w, h;
     SDL_GetWindowSize(ventana, &w, &h);
     if (w <= 0 || h <= 0) return;
     int iw = pantalla_completa ? 512 : 256, ih = pantalla_completa ? 192 : 384;
-    if (disposicion) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
+    if (disposicion == 1) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
+    if (disposicion == 2) iw = 256, ih = 192;
     EnterCriticalSection(&cs_destino);
     if (w * ih > h * iw) { dst_h = h; dst_w = h * iw / ih; }   // sobra ancho: bandas a los lados
     else { dst_w = w; dst_h = w * ih / iw; }                   // sobra alto: bandas arriba y abajo
     dst_x = (w - dst_w) / 2;
     dst_y = (h - dst_h) / 2;
-    ov_x = dst_x + dst_h * 4 / 3;  // la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
-    ov_w = dst_x + dst_w - ov_x;
-    ov_h = ov_w * 3 / 4;
-    ov_y = dst_y + dst_h - ov_h;
+    if (disposicion == 2) {  // superpuesta: un tercio del ancho, con un pequeño margen
+        int m = dst_w / 80;
+        ov_w = dst_w / 3;
+        ov_h = ov_w * 3 / 4;
+        ov_x = dst_x + dst_w - ov_w - m;
+        ov_y = dst_y + dst_h - ov_h - m;
+    } else {  // al lado: la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
+        ov_x = dst_x + dst_h * 4 / 3;
+        ov_w = dst_x + dst_w - ov_x;
+        ov_h = ov_w * 3 / 4;
+        ov_y = dst_y + dst_h - ov_h;
+    }
     LeaveCriticalSection(&cs_destino);
 }
 
-// la imagen más nueva cuya hora ya ha llegado (y se la queda el pintor); -1 si no hay ninguna
+// La siguiente imagen pendiente cuya hora ya ha llegado (y se la queda el pintor); -1 si no hay ninguna. En cola: "la
+// más nueva" tiraba una imagen cada vez que un pequeño temblor juntaba dos en un refresco (con 240 FPS en un monitor
+// de 240 Hz salían 212-231). Solo se salta si hay 3 o más esperando, para no ir acumulando retraso.
 static int elige_marco(void) {
+    static int64_t visto;
     int64_t ya = reloj();
     EnterCriticalSection(&cs_marcos);
-    int mejor = -1;
-    for (int i = 0; i < NM; i++)
-        if (marco_ts[i] && marco_ts[i] <= ya && (mejor < 0 || marco_ts[i] > marco_ts[mejor])) mejor = i;
-    if (mejor >= 0) i_viendo = mejor;
+    int mejor = -1, primero = -1, pendientes = 0;
+    for (int i = 0; i < NM; i++) {
+        if (!marco_ts[i] || marco_ts[i] > ya) continue;
+        if (mejor < 0 || marco_ts[i] > marco_ts[mejor]) mejor = i;
+        if (marco_ts[i] <= visto) continue;
+        pendientes++;
+        if (primero < 0 || marco_ts[i] < marco_ts[primero]) primero = i;
+    }
+    int elegido = pendientes >= 3 || primero < 0 ? mejor : primero;
+    if (elegido >= 0) { i_viendo = elegido; visto = marco_ts[elegido]; }
     LeaveCriticalSection(&cs_marcos);
-    return mejor;
+    return elegido;
 }
 
 static GLuint tex_juego;
@@ -146,8 +165,16 @@ static void gl_pinta(int i, int subir) {
     float ox = (float)ov_x, oy = (float)ov_y, ow = (float)ov_w, oh = (float)ov_h;
     int lado = pantalla_completa, al_lado = disposicion;
     LeaveCriticalSection(&cs_destino);
-    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo
-        gl_rect(x, y, ox - x, h, 0, 0, 1, 0.5f);
+    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo, o superpuesta con un borde negro
+        gl_rect(x, y, al_lado == 2 ? w : ox - x, h, 0, 0, 1, 0.5f);
+        if (al_lado == 2) {
+            float bo = ow / 100 + 2;
+            glDisable(GL_TEXTURE_2D);
+            glColor4f(0, 0, 0, 1);
+            gl_rect(ox - bo, oy - bo, ow + 2 * bo, oh + 2 * bo, 0, 0, 0, 0);
+            glColor4f(1, 1, 1, 1);
+            glEnable(GL_TEXTURE_2D);
+        }
         gl_rect(ox, oy, ow, oh, 0, 0.5f, 1, 1);
     } else if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
         gl_rect(x, y, w / 2, h, 0, 0, 1, 0.5f);
@@ -189,8 +216,11 @@ static void cambia_pantalla_completa(void) {
     calcula_destino();
 }
 
-// Al lado: la ventana en 16:9 con el mismo alto (la de arriba al doble); una encima de otra, como al principio
-static int ancho_ventana(void) { return disposicion ? (384 * ESCALA * 16 + 8) / 9 : 256 * ESCALA; }
+// Al lado: la ventana en 16:9 con el mismo alto; superpuesta, 512x384 (en las dos, la de arriba al doble); las dos
+// iguales, como al principio
+static int ancho_ventana(void) {
+    return disposicion == 1 ? (384 * ESCALA * 16 + 8) / 9 : (disposicion == 2 ? 512 : 256) * ESCALA;
+}
 static void cambia_disposicion(int d) {
     disposicion = d;
     if (!pantalla_completa) SDL_SetWindowSize(ventana, ancho_ventana(), 384 * ESCALA);
@@ -206,7 +236,8 @@ void ventana_inicia(void) {
         exit(1);
     }
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    disposicion = getenv("MKDS_DISPOSICION") && atoi(getenv("MKDS_DISPOSICION")) == 1;
+    disposicion = getenv("MKDS_DISPOSICION") ? atoi(getenv("MKDS_DISPOSICION")) : 0;
+    if (disposicion < 0 || disposicion > 2) disposicion = 0;
     ventana = SDL_CreateWindow("DS Kart Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                ancho_ventana(), 384 * ESCALA,
                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -348,7 +379,7 @@ static void raton(int mx, int my, int pulsado) {
     LeaveCriticalSection(&cs_destino);
     if (w <= 0 || h <= 0) return;
     int x, y;
-    if (disposicion) {  // la táctil es el recuadro de la derecha
+    if (disposicion) {  // la táctil es su recuadro
         if (ow <= 0 || oh <= 0) return;
         x = mx < ox ? -1 : (mx - ox) * 256 / ow;
         y = my < oy ? -1 : (my - oy) * 192 / oh;

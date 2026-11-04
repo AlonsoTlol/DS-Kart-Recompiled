@@ -206,14 +206,25 @@ static const Texto textos[] = {
     {"En una esquina, también en pantalla completa.", "In a corner, also in fullscreen.",
      "Dans un coin, aussi en plein écran.", "In einer Ecke, auch im Vollbild.", "In un angolo, anche a schermo intero."},
     {"Pantallas", "Screens", "Écrans", "Bildschirme", "Schermi"},
-    {"Una encima de otra", "One above the other", "L'un au-dessus de l'autre", "Übereinander", "Una sopra l'altra"},
+    {"Las dos iguales", "Both the same size", "Les deux identiques", "Beide gleich groß", "Entrambi uguali"},
+    {"Una encima de otra", "One on top of the other", "L'un sur l'autre", "Übereinander", "Una sopra l'altra"},
     {"La grande y la táctil al lado", "Big one with the touch screen beside it", "La grande et l'écran tactile à côté",
      "Groß, Touchscreen daneben", "Quello grande e il touch accanto"},
-    {"La pantalla de arriba a todo el alto y la táctil pequeña a su derecha, abajo: juntas llenan una pantalla 16:9.",
-     "The top screen at full height and the touch screen small to its right, at the bottom: together they fill a 16:9 screen.",
-     "L'écran du haut sur toute la hauteur et l'écran tactile en petit à sa droite, en bas : ensemble, ils remplissent un écran 16:9.",
-     "Der obere Bildschirm in voller Höhe und der Touchscreen klein rechts daneben, unten: zusammen füllen sie einen 16:9-Bildschirm.",
-     "Lo schermo superiore a tutta altezza e il touch piccolo alla sua destra, in basso: insieme riempiono uno schermo 16:9."},
+    {"Las dos pantallas al mismo tamaño: una sobre otra en ventana, lado a lado en pantalla completa.",
+     "Both screens the same size: stacked in a window, side by side in full screen.",
+     "Les deux écrans de même taille : l'un sur l'autre en fenêtre, côte à côte en plein écran.",
+     "Beide Bildschirme gleich groß: übereinander im Fenster, nebeneinander im Vollbild.",
+     "Entrambi gli schermi della stessa grandezza: uno sopra l'altro in finestra, affiancati a schermo intero."},
+    {"La pantalla de arriba en grande y la táctil pequeña encima de ella, en la esquina de abajo a la derecha.",
+     "The top screen big and the touch screen small on top of it, in the bottom-right corner.",
+     "L'écran du haut en grand et l'écran tactile en petit par-dessus, dans le coin en bas à droite.",
+     "Der obere Bildschirm groß und der Touchscreen klein darüber, in der Ecke unten rechts.",
+     "Lo schermo superiore grande e il touch piccolo sopra, nell'angolo in basso a destra."},
+    {"La pantalla de arriba a todo el alto y la táctil pequeña pegada a su derecha, sin taparla: juntas llenan una pantalla 16:9.",
+     "The top screen at full height and the touch screen small right next to it, without covering it: together they fill a 16:9 screen.",
+     "L'écran du haut sur toute la hauteur et l'écran tactile en petit juste à sa droite, sans le couvrir : ensemble, ils remplissent un écran 16:9.",
+     "Der obere Bildschirm in voller Höhe und der Touchscreen klein direkt rechts daneben, ohne ihn zu verdecken: Zusammen füllen sie einen 16:9-Bildschirm.",
+     "Lo schermo superiore a tutta altezza e il touch piccolo subito alla sua destra, senza coprirlo: insieme riempiono uno schermo 16:9."},
     {"3D con la tarjeta gráfica (experimental)", "3D on the graphics card (experimental)",
      "3D sur la carte graphique (expérimental)", "3D auf der Grafikkarte (experimentell)",
      "3D sulla scheda grafica (sperimentale)"},
@@ -504,10 +515,14 @@ static void pestaña_graficos(void) {
     ayuda(T("Las dos pantallas lado a lado. También con F11."));
     titulo(T("Pantallas"));
     int d = ventana_disposicion();
-    if (ImGui::RadioButton(T("Una encima de otra"), d == 0)) { ventana_pon_disposicion(0); cambiado = 1; }
+    if (ImGui::RadioButton(T("Las dos iguales"), d == 0)) { ventana_pon_disposicion(0); cambiado = 1; }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(T("Una encima de otra"), d == 2)) { ventana_pon_disposicion(2); cambiado = 1; }
     ImGui::SameLine();
     if (ImGui::RadioButton(T("La grande y la táctil al lado"), d == 1)) { ventana_pon_disposicion(1); cambiado = 1; }
-    ayuda(T("La pantalla de arriba a todo el alto y la táctil pequeña a su derecha, abajo: juntas llenan una pantalla 16:9."));
+    ayuda(T(d == 2 ? "La pantalla de arriba en grande y la táctil pequeña encima de ella, en la esquina de abajo a la derecha."
+            : d == 1 ? "La pantalla de arriba a todo el alto y la táctil pequeña pegada a su derecha, sin taparla: juntas llenan una pantalla 16:9."
+                     : "Las dos pantallas al mismo tamaño: una sobre otra en ventana, lado a lado en pantalla completa."));
     titulo(T("Imágenes por segundo"));
     static const int fpss[] = {60, 120, 180, 240};
     for (int i = 0; i < 4; i++) {

@@ -424,6 +424,8 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, an, al, GL_RGBA, GL_UNSIGNED_BYTE, lectura);
     uint16_t cc = (uint16_t)(clear & 0x7FFF);
+    static uint8_t a5[256];  // de 8 bits a 5
+    if (!a5[255]) for (int i = 0; i < 256; i++) a5[i] = (uint8_t)((i * 31 + 127) / 255);
     for (int y = 0; y < al; y++) {
         const uint8_t *f = lectura + (size_t)(al - 1 - y) * an * 4;
         uint16_t *dc16 = color + (size_t)y * an;
@@ -431,16 +433,20 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
         for (int x = 0; x < an; x++, f += 4) {
             int A = f[3];
             if (!A) { dc16[x] = cc; da[x] = 0; continue; }
+            if (A == 255) {  // lo normal: sin dividir (a escala 4 son 786.000 puntos por imagen)
+                dc16[x] = (uint16_t)(a5[f[0]] | a5[f[1]] << 5 | a5[f[2]] << 10);
+                da[x] = 31;
+                continue;
+            }
             int r, g, b;
-            if (A == 255) { r = f[0]; g = f[1]; b = f[2]; }
-            else {
+            {
                 r = f[0] * 255 / A; g = f[1] * 255 / A; b = f[2] * 255 / A;
                 if (r > 255) r = 255;
                 if (g > 255) g = 255;
                 if (b > 255) b = 255;
             }
-            dc16[x] = (uint16_t)((r * 31 + 127) / 255 | ((g * 31 + 127) / 255) << 5 | ((b * 31 + 127) / 255) << 10);
-            da[x] = (uint8_t)((A * 31 + 127) / 255);
+            dc16[x] = (uint16_t)(a5[r] | a5[g] << 5 | a5[b] << 10);
+            da[x] = a5[A];
         }
     }
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);

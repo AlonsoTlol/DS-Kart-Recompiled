@@ -26,7 +26,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 partial class Launcher {
-    const string VERSION_NUM = "0.2.2";
+    const string VERSION_NUM = "0.2.3";
     const string REPO = "AlonsoTlol/DS-Kart-Recompiled";
 
     const string URL_PYTHON = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip";
@@ -114,12 +114,14 @@ partial class Launcher {
         return d;
     }
 
-    // Sin build\mkds.exe hay que prepararlo. Con él y sin preparado.txt es una copia hecha a mano (la de
-    // desarrollo): se deja como está.
+    // Sin build\mkds.exe hay que prepararlo. Con él y sin preparado.txt: si es la carpeta de desarrollo (un
+    // repositorio de git) se deja como está; si no, se prepara. Antes se dejaba siempre, y a quien tenía un
+    // mkds.exe que no hizo el launcher (el zip de prueba, que lo traía hecho) el juego no se le actualizaba nunca:
+    // el launcher sí, pero el juego seguía con el menú F1 viejo.
     static bool HayQuePreparar() {
         if (!File.Exists(Ruta("build", "mkds.exe"))) return true;
         var p = LeePreparado();
-        if (p.Count == 0) return false;
+        if (p.Count == 0) return !Directory.Exists(Ruta(".git"));
         string h;
         if (!p.TryGetValue("traduccion", out h) || h != HuellaTraduccion()) return true;
         if (!p.TryGetValue("enlace", out h) || h != HuellaEnlace()) return true;  // otras librerías: volver a enlazar
@@ -413,6 +415,17 @@ partial class Launcher {
     // se pone al acabar la comprobación de al abrir (haya ido bien o no): JUGAR la espera un poco
     static readonly ManualResetEvent buscado = new ManualResetEvent(false);
 
+    // El zip de Windows de una versión (el mismo que se descarga la primera vez): hay uno por sistema y los otros no
+    // traen Launcher.exe. Las versiones antiguas solo tienen uno, sin el sistema en el nombre.
+    static string ZipWindows(string json) {
+        string primero = null;
+        foreach (Match a in Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\"")) {
+            if (primero == null) primero = a.Groups[1].Value;
+            if (a.Groups[1].Value.IndexOf("Windows", StringComparison.OrdinalIgnoreCase) >= 0) return a.Groups[1].Value;
+        }
+        return primero;
+    }
+
     // Al abrir, sin molestar: si hay una versión más nueva en GitHub, sale el botón de actualizar
     static void BuscaActualizacion(bool avisarSiNoHay) {
         var hilo = new Thread(delegate() {
@@ -426,9 +439,7 @@ partial class Launcher {
                     string json = w.DownloadString("https://api.github.com/repos/" + REPO + "/releases/latest");
                     var m = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9.]+)\"");
                     if (m.Success) tag = m.Groups[1].Value;
-                    // el zip de la versión (el mismo que se descarga la primera vez)
-                    foreach (Match a in Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\""))
-                        if (zip == null) zip = a.Groups[1].Value;
+                    zip = ZipWindows(json);
                 }
             } catch (Exception ex) { error = ex.Message; }
             bool hay = tag != null && zip != null && new Version(tag) > new Version(VERSION_NUM);

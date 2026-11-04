@@ -31,13 +31,13 @@ Because it runs natively, it can go beyond the original:
 
 ## What you will need
 
-- Windows 10 or 11 (64-bit), or **Linux (beta)**
+- Windows 10 or 11 (64-bit), **Linux (beta)** or **macOS (beta, not tested yet)**
 - A dump of **your own** European *Mario Kart DS* cartridge (game code `AMCP`).
   **The game is not and will never be included here.**
 
 ## How to play
 
-1. Download `DS-Kart-Recompiled-vX.Y.Z.zip` from the [latest release](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
+1. Download `DS-Kart-Recompiled-Launcher-Windows-vX.Y.Z.zip` from the [latest release](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
    and extract it anywhere (don't run it from inside the zip).
 2. Open `Launcher.exe`, pick your language and, in Settings, your ROM.
 3. Enter your name and press **PLAY**. The first time, the launcher downloads Python and the compiler from their
@@ -51,8 +51,8 @@ If Windows SmartScreen warns you, click "More info" › "Run anyway" (the launch
 
 ### Linux (beta)
 
-The same zip works on Linux. There's no launcher window yet: a script prepares the game and starts it, and the
-settings go in `ajustes.ini`.
+Download `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. There's no launcher window yet: a script prepares the game and
+starts it, and the settings go in `ajustes.ini`.
 
 1. Install the tools (once): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
    `sudo pacman -S python clang sdl2` (Arch) or `sudo dnf install python3 clang SDL2-devel` (Fedora).
@@ -60,7 +60,11 @@ settings go in `ajustes.ini`.
 3. In a terminal inside the folder: `sh linux/jugar.sh`. The first time it builds the game from your ROM
    (5–30 minutes depending on the CPU).
 
-Details in `linux/LEEME.txt`. Window, sound, keyboard and controllers go through SDL2.
+Details in `README.txt`, inside the zip. Window, sound, keyboard and controllers go through SDL2.
+
+### macOS (beta, not tested yet)
+
+Download `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` and follow its `README.txt`.
 
 ## System requirements
 
@@ -84,7 +88,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
 - 🧪 Linux (beta) — works, without a launcher window yet
-- 🧪 macOS (beta, not tested yet) — the Linux version built on a Mac: see `mac/LEEME.txt` and tell us how it goes
+- 🧪 macOS (beta, not tested yet) — the Linux version built on a Mac: see the Mac zip and tell us how it goes
 - 🌐 **Online play (beta):** use the game's own **Nintendo WFC** menu (Worldwide, Continental, Rivals, Friends) for up to 4 players. It runs on our own small server (no Wiimmfi needed); races go directly between players. Some networks (CG-NAT, mobile data) may not connect.
 
 ## Credits
@@ -132,13 +136,13 @@ Como funciona de forma nativa, puede ir más allá del original:
 
 ## Qué hace falta
 
-- Windows 10 u 11 (64 bits), o **Linux (beta)**
+- Windows 10 u 11 (64 bits), **Linux (beta)** o **macOS (beta, aún sin probar)**
 - Una copia de **tu propio cartucho** de *Mario Kart DS* europeo (código `AMCP`).
   **El juego no está ni estará nunca aquí.**
 
 ## Cómo jugar
 
-1. Descarga `DS-Kart-Recompiled-vX.Y.Z.zip` de la [última versión](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
+1. Descarga `DS-Kart-Recompiled-Launcher-Windows-vX.Y.Z.zip` de la [última versión](https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest)
    y descomprímelo donde quieras (no lo abras desde dentro del zip).
 2. Abre `Launcher.exe`, elige el idioma y, en Ajustes, tu ROM.
 3. Pon tu nombre y dale a **JUGAR**. La primera vez el launcher descarga Python y el compilador de sus páginas
@@ -153,8 +157,8 @@ Si Windows SmartScreen avisa, pulsa "Más información" › "Ejecutar de todas f
 
 ### Linux (beta)
 
-El mismo zip funciona en Linux. Todavía no hay ventana de launcher: un script prepara el juego y lo abre, y los
-ajustes van en `ajustes.ini`.
+Descarga `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. Todavía no hay ventana de launcher: un script prepara el juego y
+lo abre, y los ajustes van en `ajustes.ini`.
 
 1. Instala las herramientas (una vez): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
    `sudo pacman -S python clang sdl2` (Arch) o `sudo dnf install python3 clang SDL2-devel` (Fedora).
@@ -162,7 +166,11 @@ ajustes van en `ajustes.ini`.
 3. En una terminal dentro de la carpeta: `sh linux/jugar.sh`. La primera vez genera el juego desde tu ROM
    (de 5 a 30 minutos según el procesador).
 
-Más detalles en `linux/LEEME.txt`. La ventana, el sonido, el teclado y los mandos van con SDL2.
+Más detalles en `README.txt`, dentro del zip. La ventana, el sonido, el teclado y los mandos van con SDL2.
+
+### macOS (beta, aún sin probar)
+
+Descarga `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` y sigue su `README.txt`.
 
 ## Requisitos del sistema
 
@@ -186,7 +194,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
 - 🧪 Linux (beta): funciona, todavía sin ventana de launcher
-- 🧪 macOS (beta, aún sin probar): la versión de Linux compilada en un Mac; mira `mac/LEEME.txt` y cuéntanos cómo va
+- 🧪 macOS (beta, aún sin probar): la versión de Linux compilada en un Mac; mira el zip de Mac y cuéntanos cómo va
 - 🌐 **Online (beta):** usa el menú **Conexión Wi-Fi de Nintendo** del propio juego (Mundial, Continental, Con rival, Amigos) para hasta 4 jugadores. Funciona con nuestro propio servidor (sin Wiimmfi) y las carreras van directas entre jugadores. Algunas redes (CG-NAT, datos móviles) puede que no conecten.
 
 ## Créditos

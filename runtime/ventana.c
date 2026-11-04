@@ -67,14 +67,15 @@ const uint32_t *video_hd(int abajo);
 static uint32_t *imagen_hd = marcos[0].hd, imagen_lado_hd[2048 * 768];
 static BITMAPINFO bmi_hd, bmi_lado_hd, bmi_una, bmi_una_hd;  // _una: una sola pantalla (256x192)
 static LONG estilo_normal;
-// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 una encima de otra (lado a lado en pantalla
-// completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y abajo a la derecha
-// (issue #11): juntas son 16:9, como un monitor normal. En la 1 la táctil va en ov_* (dentro de dst_*)
+// Disposición de las pantallas (DISPOSICION en ajustes.ini, menú F1): 0 las dos iguales (una sobre otra en ventana,
+// lado a lado en pantalla completa); 1 la de arriba con todo el alto y la táctil al lado, a un tercio de su tamaño y
+// abajo a la derecha: juntas son 16:9, como un monitor normal; 2 la de arriba entera y la táctil pequeña superpuesta
+// en esa esquina (issue #11). En la 1 y la 2 la táctil va en ov_* (dentro de dst_*)
 static int disposicion;
 static int ov_x, ov_y, ov_w, ov_h;
 static volatile int pide_disp = -1;  // el menú la cambia: se hace en ventana_mensajes
 int ventana_disposicion(void) { return disposicion; }
-void ventana_pon_disposicion(int d) { pide_disp = d ? 1 : 0; }
+void ventana_pon_disposicion(int d) { pide_disp = d >= 0 && d <= 2 ? d : 0; }
 
 static void calcula_destino(void) {
     RECT r;
@@ -82,20 +83,31 @@ static void calcula_destino(void) {
     int w = r.right, h = r.bottom;
     if (w <= 0 || h <= 0) return;
     int iw = pantalla_completa ? 512 : 256, ih = pantalla_completa ? 192 : 384;  // tamaño de la imagen
-    if (disposicion) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
+    if (disposicion == 1) iw = 1024, ih = 576;  // 256x192 y 85x64 al lado: 16:9
+    if (disposicion == 2) iw = 256, ih = 192;
     if (w * ih > h * iw) { dst_h = h; dst_w = h * iw / ih; }   // sobra ancho: bandas a los lados
     else { dst_w = w; dst_h = w * ih / iw; }                   // sobra alto: bandas arriba y abajo
     dst_x = (w - dst_w) / 2;
     dst_y = (h - dst_h) / 2;
-    ov_x = dst_x + dst_h * 4 / 3;  // la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
-    ov_w = dst_x + dst_w - ov_x;
-    ov_h = ov_w * 3 / 4;
-    ov_y = dst_y + dst_h - ov_h;
+    if (disposicion == 2) {  // superpuesta: un tercio del ancho, con un pequeño margen
+        int m = dst_w / 80;
+        ov_w = dst_w / 3;
+        ov_h = ov_w * 3 / 4;
+        ov_x = dst_x + dst_w - ov_w - m;
+        ov_y = dst_y + dst_h - ov_h - m;
+    } else {  // al lado: la de arriba, a todo el alto; la táctil, en lo que queda a la derecha y abajo
+        ov_x = dst_x + dst_h * 4 / 3;
+        ov_w = dst_x + dst_w - ov_x;
+        ov_h = ov_w * 3 / 4;
+        ov_y = dst_y + dst_h - ov_h;
+    }
 }
 
-// Tamaño de la ventana (sin pantalla completa): una encima de otra, 256x384; al lado, 16:9 con el mismo alto
-// (la de arriba al doble)
-static int ancho_ventana(void) { return disposicion ? (384 * ESCALA * 16 + 8) / 9 : 256 * ESCALA; }
+// Tamaño de la ventana (sin pantalla completa): las dos iguales, 256x384; al lado, 16:9 con el mismo alto; superpuesta,
+// 512x384 (en las dos últimas, la de arriba al doble)
+static int ancho_ventana(void) {
+    return disposicion == 1 ? (384 * ESCALA * 16 + 8) / 9 : (disposicion == 2 ? 512 : 256) * ESCALA;
+}
 static void ajusta_ventana(void) {
     if (pantalla_completa) return;
     RECT r = {0, 0, ancho_ventana(), 384 * ESCALA};
@@ -112,12 +124,15 @@ static void compone(HDC dc) {  // dibuja todo (imagen, bandas, cartel) en dc
     FillRect(dc, &b1, negro); FillRect(dc, &b2, negro); FillRect(dc, &b3, negro); FillRect(dc, &b4, negro);
     SetStretchBltMode(dc, COLORONCOLOR);
     int e = video_escala();
-    if (disposicion) {  // la de arriba a todo el alto; la táctil a su derecha, abajo (encima de ella, negro)
+    if (disposicion) {  // la de arriba a todo el alto; la táctil a su derecha (encima de ella, negro) o superpuesta
         const uint32_t *px = e > 1 ? imagen_hd : imagen;
         const BITMAPINFO *b = e > 1 ? &bmi_una_hd : &bmi_una;
-        StretchDIBits(dc, dst_x, dst_y, ov_x - dst_x, dst_h, 0, 0, 256 * e, 192 * e, px, b, DIB_RGB_COLORS, SRCCOPY);
+        StretchDIBits(dc, dst_x, dst_y, disposicion == 2 ? dst_w : ov_x - dst_x, dst_h, 0, 0, 256 * e, 192 * e, px, b,
+                      DIB_RGB_COLORS, SRCCOPY);
+        int bo = ov_w / 100 + 2;
         RECT hueco = {ov_x, dst_y, ov_x + ov_w, ov_y};
-        FillRect(dc, &hueco, negro);
+        RECT marco = {ov_x - bo, ov_y - bo, ov_x + ov_w + bo, ov_y + ov_h + bo};
+        FillRect(dc, disposicion == 2 ? &marco : &hueco, negro);
         StretchDIBits(dc, ov_x, ov_y, ov_w, ov_h, 0, 0, 256 * e, 192 * e, px + (size_t)256 * 192 * e * e, b,
                       DIB_RGB_COLORS, SRCCOPY);
     } else if (e > 1 && pantalla_completa) {
@@ -226,6 +241,8 @@ void repe_guarda(void);
 const char *repe_aviso(void);
 
 static int oculto;
+static double g_pinta_ms, g_pinta_max, g_hueco_max, g_subir_ms, g_subir_max;  // MKDS_MIDE
+static int g_pinta_n, g_huecos_largos;
 static volatile int pide_pc;  // el menú pide pantalla completa (1) o ventana (2): se hace en ventana_mensajes
 int ventana_pantalla_completa(void) { return pantalla_completa; }
 void ventana_pide_pantalla_completa(int si) { pide_pc = si ? 1 : 2; }
@@ -278,7 +295,7 @@ static void tecla(WPARAM vk, int pulsada) {
 static void raton(LPARAM lp, int pulsado) {
     if (dst_w <= 0 || dst_h <= 0) return;
     int x, y;
-    if (disposicion) {  // la táctil es el recuadro de la derecha
+    if (disposicion) {  // la táctil es su recuadro
         if (ov_w <= 0 || ov_h <= 0) return;
         x = ((short)LOWORD(lp) - ov_x) * 256 / ov_w;
         y = ((short)HIWORD(lp) - ov_y) * 192 / ov_h;
@@ -357,22 +374,50 @@ static int64_t reloj(void) {
     return t.QuadPart;
 }
 
-// la imagen más nueva cuya hora ya ha llegado (y se la queda el pintor); -1 si no hay ninguna
+// La siguiente imagen pendiente cuya hora ya ha llegado (y se la queda el pintor); -1 si no hay ninguna. En cola: "la
+// más nueva" tiraba una imagen cada vez que un pequeño temblor juntaba dos en un refresco (con 240 FPS en un monitor
+// de 240 Hz salían 212-231). Solo se salta si hay 3 o más esperando, para no ir acumulando retraso.
 static int elige_marco(void) {
+    static int64_t visto;
     int64_t ya = reloj();
     EnterCriticalSection(&cs_marcos);
-    int mejor = -1;
-    for (int i = 0; i < NM; i++)
-        if (marco_ts[i] && marco_ts[i] <= ya && (mejor < 0 || marco_ts[i] > marco_ts[mejor])) mejor = i;
-    if (mejor >= 0) i_viendo = mejor;
+    int mejor = -1, primero = -1, pendientes = 0;
+    for (int i = 0; i < NM; i++) {
+        if (!marco_ts[i] || marco_ts[i] > ya) continue;
+        if (mejor < 0 || marco_ts[i] > marco_ts[mejor]) mejor = i;
+        if (marco_ts[i] <= visto) continue;
+        pendientes++;
+        if (primero < 0 || marco_ts[i] < marco_ts[primero]) primero = i;
+    }
+    int elegido = pendientes >= 3 || primero < 0 ? mejor : primero;
+    if (elegido >= 0) { i_viendo = elegido; visto = marco_ts[elegido]; }
     LeaveCriticalSection(&cs_marcos);
-    return mejor;
+    return elegido;
 }
 
 // ---- OpenGL ----
 static GLuint tex_juego, tex_cartel;
 static int tex_w, tex_h, cartel_w, cartel_h;
 static char cartel_texto[128];
+
+// Subir la imagen con búferes de píxeles (PBO): glTexSubImage2D directo dejaba al pintor parado hasta que la tarjeta
+// acababa con la imagen anterior (4-7 ms a escala 4 con el monitor a 240 Hz); si eso pasaba de un refresco, se perdía
+// una imagen y los FPS bailaban (166-174 de 180 en pantalla completa). Así se copia y se sigue.
+#define GL_PIXEL_UNPACK_BUFFER 0x88EC
+#define GL_STREAM_DRAW 0x88E0
+#define GL_WRITE_ONLY 0x88B9
+typedef void(APIENTRY *PfnGenBuffers)(GLsizei, GLuint *);
+typedef void(APIENTRY *PfnBindBuffer)(GLenum, GLuint);
+typedef void(APIENTRY *PfnBufferData)(GLenum, ptrdiff_t, const void *, GLenum);
+typedef void *(APIENTRY *PfnMapBuffer)(GLenum, GLenum);
+typedef GLboolean(APIENTRY *PfnUnmapBuffer)(GLenum);
+static PfnGenBuffers p_glGenBuffers;
+static PfnBindBuffer p_glBindBuffer;
+static PfnBufferData p_glBufferData;
+static PfnMapBuffer p_glMapBuffer;
+static PfnUnmapBuffer p_glUnmapBuffer;
+static GLuint pbo[3];
+static int gl_pbo;
 
 static int gl_inicia(HDC dc) {
     PIXELFORMATDESCRIPTOR pfd = {sizeof pfd, 1, PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
@@ -386,6 +431,15 @@ static int gl_inicia(HDC dc) {
     if (!intervalo || !intervalo(1)) return 0;  // sin sincronía con el monitor no merece la pena
     glGenTextures(1, &tex_juego);
     glGenTextures(1, &tex_cartel);
+    p_glGenBuffers = (PfnGenBuffers)(void *)wglGetProcAddress("glGenBuffers");
+    p_glBindBuffer = (PfnBindBuffer)(void *)wglGetProcAddress("glBindBuffer");
+    p_glBufferData = (PfnBufferData)(void *)wglGetProcAddress("glBufferData");
+    p_glMapBuffer = (PfnMapBuffer)(void *)wglGetProcAddress("glMapBuffer");
+    p_glUnmapBuffer = (PfnUnmapBuffer)(void *)wglGetProcAddress("glUnmapBuffer");
+    if (p_glGenBuffers && p_glBindBuffer && p_glBufferData && p_glMapBuffer && p_glUnmapBuffer && !getenv("MKDS_SIN_PBO")) {
+        p_glGenBuffers(3, pbo);
+        gl_pbo = 1;
+    }
     return 1;
 }
 
@@ -452,7 +506,29 @@ static void gl_pinta(HDC dc, int i, int subir) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
         tex_w = iw; tex_h = ih;
     } else if (subir) {
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
+        LARGE_INTEGER s0, s1, sf;
+        QueryPerformanceCounter(&s0);
+        void *m = NULL;
+        if (gl_pbo) {
+            static int ip;
+            ip = (ip + 1) % 3;
+            ptrdiff_t tam = (ptrdiff_t)iw * ih * 4;
+            p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[ip]);
+            p_glBufferData(GL_PIXEL_UNPACK_BUFFER, tam, NULL, GL_STREAM_DRAW);  // sin esperar a la anterior
+            m = p_glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+            if (m) {
+                memcpy(m, px, (size_t)tam);
+                p_glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
+            }
+            p_glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        }
+        if (!m) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
+        QueryPerformanceCounter(&s1);
+        QueryPerformanceFrequency(&sf);
+        double sm = (double)(s1.QuadPart - s0.QuadPart) * 1000.0 / (double)sf.QuadPart;
+        g_subir_ms += sm;
+        if (sm > g_subir_max) g_subir_max = sm;
     }
     glViewport(0, 0, r.right, r.bottom);
     glMatrixMode(GL_PROJECTION);
@@ -470,8 +546,16 @@ static void gl_pinta(HDC dc, int i, int subir) {
     float ox = (float)ov_x, oy = (float)ov_y, ow = (float)ov_w, oh = (float)ov_h;
     int lado = pantalla_completa, al_lado = disposicion;
     LeaveCriticalSection(&cs_gdi);
-    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo
-        gl_rect(x, y, ox - x, h, 0, 0, 1, 0.5f);
+    if (al_lado) {  // la de arriba a todo el alto; la táctil a su derecha, abajo, o superpuesta con un borde negro
+        gl_rect(x, y, al_lado == 2 ? w : ox - x, h, 0, 0, 1, 0.5f);
+        if (al_lado == 2) {
+            float bo = ow / 100 + 2;
+            glDisable(GL_TEXTURE_2D);
+            glColor4f(0, 0, 0, 1);
+            gl_rect(ox - bo, oy - bo, ow + 2 * bo, oh + 2 * bo, 0, 0, 0, 0);
+            glColor4f(1, 1, 1, 1);
+            glEnable(GL_TEXTURE_2D);
+        }
         gl_rect(ox, oy, ow, oh, 0, 0.5f, 1, 1);
     } else if (lado) {  // pantalla de arriba a la izquierda, táctil a la derecha
         gl_rect(x, y, w / 2, h, 0, 0, 1, 0.5f);
@@ -532,8 +616,25 @@ static DWORD WINAPI hilo_pinta(LPVOID p) {
         if (i < 0) { if (gl) Sleep(1); continue; }
         if (gl) {
             int nuevo = i != subido || marco_ts[i] != ts_subido;
+            int64_t p0 = reloj();
             gl_pinta(dc, i, nuevo);
-            if (nuevo) InterlockedIncrement(&enseñadas);
+            if (nuevo) {
+                InterlockedIncrement(&enseñadas);
+                // MKDS_MIDE: cuánto tarda en pintarse y cada cuánto sale una imagen nueva
+                static int64_t antes;
+                int64_t p1 = reloj();
+                LARGE_INTEGER f;
+                QueryPerformanceFrequency(&f);
+                double ms = (double)(p1 - p0) * 1000.0 / (double)f.QuadPart;
+                g_pinta_ms += ms; g_pinta_n++;
+                if (ms > g_pinta_max) g_pinta_max = ms;
+                if (antes) {
+                    double hueco = (double)(p1 - antes) * 1000.0 / (double)f.QuadPart;
+                    if (hueco > g_hueco_max) g_hueco_max = hueco;
+                    if (hueco > 8.5) g_huecos_largos++;
+                }
+                antes = p1;
+            }
             subido = i;
             ts_subido = marco_ts[i];
         } else {
@@ -558,7 +659,8 @@ void ventana_inicia(void) {
     wc.hIcon = (HICON)LoadImageW(NULL, L"icono.ico", IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);  // el logo
     wc.lpszClassName = L"mkds";
     RegisterClassW(&wc);
-    disposicion = getenv("MKDS_DISPOSICION") && atoi(getenv("MKDS_DISPOSICION")) == 1;
+    disposicion = getenv("MKDS_DISPOSICION") ? atoi(getenv("MKDS_DISPOSICION")) : 0;
+    if (disposicion < 0 || disposicion > 2) disposicion = 0;
     RECT r = {0, 0, ancho_ventana(), 384 * ESCALA};
     DWORD estilo = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, estilo, FALSE);
@@ -590,7 +692,7 @@ void ventana_inicia(void) {
     if (getenv("MKDS_PANTALLA_COMPLETA") && atoi(getenv("MKDS_PANTALLA_COMPLETA"))) cambia_pantalla_completa();
     CreateThread(NULL, 0, hilo_mando_ps, NULL, 0, NULL);
     HANDLE h = CreateThread(NULL, 0, hilo_pinta, NULL, 0, NULL);
-    SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);  // el juego (y su música) primero
+    SetThreadPriority(h, THREAD_PRIORITY_ABOVE_NORMAL);  // casi todo lo que hace es esperar: que no pierda refrescos
     CloseHandle(h);
 }
 
@@ -904,6 +1006,17 @@ void ventana_titulo_fps(int fps, int fps3d) {
     int pantalla = (int)InterlockedExchange(&enseñadas, 0);
     menu_pon_fps(fps, fps3d, pantalla);
     if (oculto || !ventana) return;
+    if (getenv("MKDS_MIDE")) {
+        extern volatile double g_monta_ms, g_inter_ms, g_monta_max;
+        extern volatile int g_monta_n, g_fotos_saltadas;
+        fprintf(stderr, "      [ritmo] juego %d, 3D %d, en pantalla %d | montaje: 2D %.2f ms + intermedias y copias %.2f ms, máx %.2f, saltadas %d "
+                "| subir %.2f ms, máx %.2f | pintar: %.2f ms, máx %.2f | hueco máx %.2f ms, huecos > 8,5 ms: %d\n", fps, fps3d, pantalla,
+                g_monta_n ? g_monta_ms / g_monta_n : 0, g_monta_n ? g_inter_ms / g_monta_n : 0, g_monta_max, g_fotos_saltadas,
+                g_pinta_n ? g_subir_ms / g_pinta_n : 0, g_subir_max,
+                g_pinta_n ? g_pinta_ms / g_pinta_n : 0, g_pinta_max, g_hueco_max, g_huecos_largos);
+        g_monta_ms = g_inter_ms = g_monta_max = 0; g_monta_n = g_fotos_saltadas = 0;
+        g_pinta_ms = g_pinta_max = g_hueco_max = g_subir_ms = g_subir_max = 0; g_pinta_n = g_huecos_largos = 0;
+    }
     wchar_t t[128];
     const char *av = repe_aviso();
     wchar_t avw[128];

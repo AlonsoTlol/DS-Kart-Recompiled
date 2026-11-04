@@ -161,6 +161,18 @@ static uint8_t alfa_3d[256];  // alfa del fondo 0 cuando es 3D
 static uint16_t lin_a15[256];  // la línea del motor A en 15 bits, antes del brillo general (para la captura)
 static uint8_t marca3d[256];   // reescalado: en este punto se ve el 3D tal cual (se puede coger del 3D grande)
 static uint16_t brillo_a;      // MASTER_BRIGHT del motor A en la línea actual
+// La copia de la captura de pantalla a tamaño grande. En la presentación del circuito el juego tiene 3D en las dos
+// pantallas: pinta una cada fotograma, la copia (DISPCAPCNT) a un banco de VRAM y la otra pantalla la enseña con
+// sprites de mapa de bits. Al copiar se guarda también la línea grande (hd_cap) y la copia pequeña (lo_cap, para ver
+// luego que la VRAM no ha cambiado); al enseñarla, cada punto que sale de esa copia se pone desde la grande.
+static uint32_t hd_cap[4][1024 * 768];
+static uint16_t lo_cap[4][256 * 192];
+static uint8_t m3_cap[4][256 * 192];  // ese punto de la copia era 3D (se puede cambiar por el 3D interpolado)
+static int cap_e[4];                // escala con la que se guardó (0: no vale)
+static uint32_t cap_woff[4];         // dónde empieza la copia en el banco
+static const uint8_t *src_obj[256], *src_bg[4][256];  // de qué punto de la VRAM sale cada píxel (mapa de bits directo)
+static const uint8_t *src_fin[2][256];                // ...el que se ve al final, por motor (0 = A), sin mezclas
+static uint16_t brillo_lin[2];                        // MASTER_BRIGHT de la línea actual, por motor
 static int hofs_3d;           // desplazamiento horizontal de la capa 3D en la línea actual (el menú lo usa)
 
 static void fondo_texto(const Motor *m, int n, int y) {
@@ -223,6 +235,7 @@ static void fondo_afin(const Motor *m, int n, int y, int extendido) {
         scr = ((cnt >> 8) & 31) * 0x4000;
     }
     uint8_t *ext = (dc >> 30) & 1 ? m->ext_bg[n] : NULL;
+    memset(src_bg[n], 0, sizeof src_bg[n]);
     for (int x = 0; x < 256; x++) {
         int tx = (x0 + pa * x) >> 8, ty = (y0 + pc * x) >> 8;
         if (envuelve) { tx &= w - 1; ty &= h - 1; }
@@ -244,8 +257,10 @@ static void fondo_afin(const Motor *m, int n, int y, int extendido) {
             uint8_t i = v8(m->bg, m->bg_mask, scr + (uint32_t)(ty * w + tx));
             if (i) { col = m->pal_bg[i]; opaco = 1; }
         } else {
-            uint16_t c = v16(m->bg, m->bg_mask, scr + (uint32_t)(ty * w + tx) * 2);
+            uint32_t o = (scr + (uint32_t)(ty * w + tx) * 2) & m->bg_mask;
+            uint16_t c = v16(m->bg, m->bg_mask, o);
             if (c & 0x8000) { col = c; opaco = 1; }
+            if (opaco && m->bg[o >> 14]) src_bg[n][x] = m->bg[o >> 14] + (o & 0x3FFF);
         }
         lin_bg[n][x] = opaco ? (col & 0x7FFF) | OPACO : 0;
     }
@@ -271,6 +286,7 @@ static void sprites(const Motor *m, int y) {
     memset(prio_obj, 4, sizeof prio_obj);
     memset(semi_obj, 0, sizeof semi_obj);
     memset(ventana_obj, 0, sizeof ventana_obj);
+    memset(src_obj, 0, sizeof src_obj);
     if (!((dc >> 12) & 1)) return;
     for (int i = 127; i >= 0; i--) {  // del último al primero: el de menor índice gana
         const uint8_t *e = m->oam + i * 8;
@@ -312,6 +328,7 @@ static void sprites(const Motor *m, int y) {
             }
             uint16_t col = 0;
             int opaco = 0;
+            const uint8_t *origen = NULL;
             if (modo == 3) {  // sprite de mapa de bits (color directo)
                 uint32_t dir;
                 if ((dc >> 6) & 1) dir = tile * (128u << ((dc >> 22) & 1)) + (uint32_t)(ty * w + tx) * 2;
@@ -322,6 +339,8 @@ static void sprites(const Motor *m, int y) {
                 }
                 uint16_t c = v16(m->obj, m->obj_mask, dir);
                 if (c & 0x8000) { col = c; opaco = 1; }
+                uint32_t o = dir & m->obj_mask;
+                origen = m->obj[o >> 14] ? m->obj[o >> 14] + (o & 0x3FFF) : NULL;
             } else {
                 uint32_t base;
                 int t_x = tx >> 3, t_y = ty >> 3;
@@ -349,6 +368,7 @@ static void sprites(const Motor *m, int y) {
             if (modo == 3 && !(a2 >> 12)) continue;  // mapa de bits con alfa 0: no se ve
             if (prio <= prio_obj[sx]) {
                 lin_obj[sx] = (col & 0x7FFF) | OPACO;
+                src_obj[sx] = origen;
                 prio_obj[sx] = (uint8_t)prio;
                 // 1 = semitransparente (usa BLDALPHA); mapa de bits: 2 + su propio alfa (0-15, en attr2)
                 semi_obj[sx] = modo == 1 ? 1 : modo == 3 ? (uint8_t)(2 + (a2 >> 12)) : 0;
@@ -357,9 +377,18 @@ static void sprites(const Motor *m, int y) {
     }
 }
 
+// De RGB555 a 32 bits, con una tabla: se hace millones de veces por segundo (cada punto de cada imagen grande)
+static uint32_t rgb_tabla[32768];
+static int rgb_lista;
 static inline uint32_t a_rgb(uint16_t c) {
-    uint32_t r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31;
-    return (r * 255 / 31) << 16 | (g * 255 / 31) << 8 | (b * 255 / 31);
+    if (!rgb_lista) {
+        for (uint32_t i = 0; i < 32768; i++) {
+            uint32_t r = i & 31, g = (i >> 5) & 31, b = (i >> 10) & 31;
+            rgb_tabla[i] = (r * 255 / 31) << 16 | (g * 255 / 31) << 8 | (b * 255 / 31);
+        }
+        rgb_lista = 1;
+    }
+    return rgb_tabla[c & 0x7FFF];
 }
 
 static uint16_t mezcla(uint16_t a, uint16_t b, int eva, int evb) {
@@ -400,7 +429,9 @@ static void dibuja_linea(const Motor *m, int y, uint32_t *out) {
     }
     int modo_bg = dc & 7;
     int activo[4];
+    memset(src_fin[!m->es_a], 0, sizeof src_fin[0]);
     for (int n = 0; n < 4; n++) {
+        memset(src_bg[n], 0, sizeof src_bg[n]);
         activo[n] = (dc >> (8 + n)) & 1;
         if (!activo[n]) continue;
         int tipo = 0;  // 0 texto, 1 afín, 2 extendido
@@ -486,6 +517,8 @@ static void dibuja_linea(const Motor *m, int y, uint32_t *out) {
             else if (efecto == 2) c = brillo(c1, 1, evy);
             else if (efecto == 3) c = brillo(c1, 2, evy);
         }
+        if (c == c1) src_fin[!m->es_a][x] = id1 == 4 ? src_obj[x] : id1 < 4 ? src_bg[id1][x] : NULL;
+        brillo_lin[!m->es_a] = mb;
         if (m->es_a) {
             lin_a15[x] = c;  // para la captura (va antes del brillo general)
             marca3d[x] = es_3d && c == c1;  // se ve el 3D sin mezclas
@@ -500,13 +533,14 @@ static void dibuja_linea(const Motor *m, int y, uint32_t *out) {
 // Captura de pantalla (DISPCAPCNT): copia una línea de la imagen del motor A, del 3D solo o de la VRAM
 // (o una mezcla) a un banco A-D. El juego la usa para tener 3D en las dos pantallas (presentación del
 // circuito, ceremonia): pinta una pantalla cada fotograma y la otra muestra la copia del anterior.
+int video_escala(void);
 static void captura_linea(const uint8_t *io9, uint32_t cap, int y) {
     static const int ancho[4] = {128, 256, 256, 256}, alto[4] = {128, 64, 128, 192};
     int sz = (cap >> 20) & 3, w = ancho[sz];
     if (y >= alto[sz]) return;
-    // Como en la consola, solo en un banco en modo LCDC (MST 0). Además esto va en el hilo de montaje, algo por
-    // detrás del juego: al acabar la presentación de un jefe el juego ya había pasado ese banco a los fondos de la
-    // pantalla de abajo y cargado el minimapa, y la copia atrasada del 3D lo llenaba de franjas de agua
+    // Como en la consola, solo en un banco en modo LCDC (MST 0): al acabar la presentación de un jefe el juego ya
+    // había pasado ese banco a los fondos de la pantalla de abajo, y una copia más encima del minimapa lo llenaba
+    // de franjas de agua
     uint8_t vc = vramcnt[(cap >> 16) & 3];
     if (!(vc & 0x80) || (vc & 7) != 0) return;
     uint8_t *dst = banco[(cap >> 16) & 3];
@@ -546,7 +580,44 @@ static void captura_linea(const uint8_t *io9, uint32_t cap, int y) {
         uint16_t v = (uint16_t)(col | (alfa ? 0x8000 : 0));
         dst[o] = (uint8_t)v;
         dst[o + 1] = (uint8_t)(v >> 8);
+        if (y < 192 && x < 256) {
+            lo_cap[(cap >> 16) & 3][y * 256 + x] = v;
+            m3_cap[(cap >> 16) & 3][y * 256 + x] = marca3d[x];
+        }
     }
+    // la copia grande (la pone monta() con la línea grande del motor A) solo vale si es la imagen del motor A tal cual
+    int b = (cap >> 16) & 3, e = video_escala();
+    if (y == 0) { cap_e[b] = e > 1 && fuente == 0 && w == 256 && eva >= 16 ? e : 0; cap_woff[b] = woff; }
+    else if (fuente != 0 || w != 256 || eva < 16) cap_e[b] = 0;
+}
+
+// De qué punto de una copia guardada sale ese punto de la VRAM (src), si es de una copia y no ha cambiado desde
+// entonces: su índice y el banco de la copia; -1 si no. (El juego alterna los bancos C y D; vale la copia de cualquier
+// banco que tenga lo mismo en el mismo sitio.)
+static int busca_cap(const uint8_t *src, int e, int *banco_copia) {
+    for (int b = 0; b < 9; b++) {
+        if (src < banco_act[b] || src >= banco_act[b] + tam_banco[b]) continue;
+        uint32_t off = (uint32_t)(src - banco_act[b]);
+        uint16_t v = (uint16_t)(src[0] | src[1] << 8);
+        for (int k = 0; k < 4; k++) {
+            int c = b < 4 ? (b + k) & 3 : k;  // primero el mismo banco
+            if (cap_e[c] != e || off < cap_woff[c] || ((off - cap_woff[c]) & 1)) continue;
+            uint32_t i = (off - cap_woff[c]) / 2;
+            if (i >= 256 * 192 || v != lo_cap[c][i]) continue;
+            *banco_copia = c;
+            return (int)i;
+        }
+        return -1;
+    }
+    return -1;
+}
+
+// Un punto de la copia a tamaño grande (bloque de e x e en hd_cap); NULL si no es de una copia
+static const uint32_t *punto_cap(const uint8_t *src, int e, int *ancho) {
+    int c, i = busca_cap(src, e, &c);
+    if (i < 0) return NULL;
+    *ancho = 256 * e;
+    return hd_cap[c] + (size_t)(i / 256) * e * 256 * e + (i % 256) * e;
 }
 
 // ---- reescalado -----------------------------------------------------------------
@@ -572,8 +643,10 @@ const uint32_t *video_hd(int abajo) { return abajo ? hd_abajo : hd_arriba; }
 
 // Una línea de la DS a tamaño grande: lo que es 3D se coge del 3D pintado a más resolución; lo demás
 // (menús, marcador, mapa) se repite tal cual, sin difuminar
-static void linea_hd(uint32_t *dst, const uint32_t *baja, int y, int es_a) {
+static void linea_hd(uint32_t *dst, const uint32_t *baja, int y, int es_a, int motor) {
     int e = video_escala(), an = 256 * e;
+    const uint8_t *const *src = src_fin[motor];
+    int bmc = (brillo_lin[motor] >> 14) & 3, fc = brillo_lin[motor] & 31;
     const uint16_t *c3 = c3hd_act;
     const uint8_t *a3 = a3hd_act;
     int bm = (brillo_a >> 14) & 3, f = brillo_a & 31;
@@ -590,7 +663,20 @@ static void linea_hd(uint32_t *dst, const uint32_t *baja, int y, int es_a) {
                     d[x * e + sx] = a_rgb(c);
                 }
             } else {
-                for (int sx = 0; sx < e; sx++) d[x * e + sx] = baja[x];
+                int ancho;
+                const uint32_t *hc = src[x] ? punto_cap(src[x], e, &ancho) : NULL;
+                if (hc) {  // de la copia de la captura: su versión grande (con el brillo general de esta pantalla)
+                    for (int sx = 0; sx < e; sx++) {
+                        uint32_t c = hc[(size_t)sy * ancho + sx];
+                        if (bmc == 1 || bmc == 2) {
+                            uint16_t c15 = (uint16_t)(((c >> 19) & 31) | ((c >> 11) & 31) << 5 | ((c >> 3) & 31) << 10);
+                            c = a_rgb(brillo(c15, bmc, fc));
+                        }
+                        d[x * e + sx] = c;
+                    }
+                } else {
+                    for (int sx = 0; sx < e; sx++) d[x * e + sx] = baja[x];
+                }
             }
         }
     }
@@ -643,6 +729,44 @@ static void monta_intermedia(uint32_t *dst, const uint32_t *arriba, const uint32
     }
 }
 
+// La presentación con 3D en las dos pantallas: una imagen con cada vista en su punto. La vista del motor A sale de
+// (cx, ax) y la que el motor B enseña como copia, de (cy, ay); los demás puntos (texto, marcador) se quedan como están
+static uint32_t idx_cap_f[192][256];  // de qué punto de la copia sale cada píxel del motor B (índice + 1), si era 3D
+static uint16_t brillo_bf[192];
+
+static void monta_doble(uint32_t *d_arriba, uint32_t *d_abajo, const uint16_t *cx, const uint8_t *ax,
+                        const uint16_t *cy, const uint8_t *ay, int e) {
+    int an = 256 * e;
+    uint32_t *pa = a_arriba ? d_arriba : d_abajo, *pb = a_arriba ? d_abajo : d_arriba;
+    for (int y = 0; y < 192; y++) {
+        int bm = (brillo_f[y] >> 14) & 3, f = brillo_f[y] & 31, h = hofs_f[y];
+        int bmb = (brillo_bf[y] >> 14) & 3, fb = brillo_bf[y] & 31;
+        for (int sy = 0; sy < e; sy++) {
+            int fila = y * e + sy;
+            uint32_t *d = pa + (size_t)fila * an, *db = pb + (size_t)fila * an;
+            for (int x = 0; x < 256; x++) {
+                for (int sx = 0; sx < e && marca_f[y][x]; sx++) {
+                    int i = fila * an + (x + h) * e + sx;
+                    if (!ax[i]) continue;
+                    uint16_t c = (uint16_t)(cx[i] & 0x7FFF);
+                    if (bm == 1 || bm == 2) c = brillo(c, bm, f);
+                    d[x * e + sx] = a_rgb(c);
+                }
+                uint32_t idx = idx_cap_f[y][x];
+                if (!idx) continue;
+                int u = (int)((idx - 1) % 256), v = (int)((idx - 1) / 256);
+                for (int sx = 0; sx < e; sx++) {
+                    int i = (v * e + sy) * an + u * e + sx;
+                    if (!ay[i]) continue;
+                    uint16_t c = (uint16_t)(cy[i] & 0x7FFF);
+                    if (bmb == 1 || bmb == 2) c = brillo(c, bmb, fb);
+                    db[x * e + sx] = a_rgb(c);
+                }
+            }
+        }
+    }
+}
+
 // ---- montaje en otro hilo ---------------------------------------------------------
 static struct {
     uint8_t io[0x2000], pal[0x800], oam[0x800];
@@ -657,6 +781,8 @@ static struct {
 static uint8_t *const banco_foto[9] = {foto.mA, foto.mB, foto.mC, foto.mD, foto.mE, foto.mF, foto.mG, foto.mH, foto.mI};
 static HANDLE ev_foto;
 static volatile LONG montando;
+volatile double g_monta_ms, g_inter_ms, g_monta_max;  // MKDS_MIDE: cuánto tarda el montaje de cada fotograma
+volatile int g_monta_n, g_fotos_saltadas;
 
 static uint8_t *a_foto(uint8_t *p) {  // un puntero a la VRAM de verdad -> el mismo sitio en la foto
     if (!p) return NULL;
@@ -665,16 +791,61 @@ static uint8_t *a_foto(uint8_t *p) {  // un puntero a la VRAM de verdad -> el mi
     return NULL;
 }
 
+// Presentación con 3D en las dos pantallas: cada vista recorre sus pasos en dos fotogramas. En este, la que acaba de
+// pintarse (P, en el motor A) va de 0 a 1/2 y la del anterior (Q, la copia) de 1/2 a 1: las dos se mueven siempre, con
+// medio fotograma de retraso, y sin saltos. El montaje base va en el hilo del juego (el juego lee la captura en el
+// fotograma siguiente); estas imágenes, en el hilo de montaje, para no quitarle tiempo al juego ni a la música.
+static uint32_t *doble_arriba, *doble_abajo;
+static volatile int doble_pendiente;
+static int doble_P;  // el juego de salidas de este trabajo (en la siguiente VBlank gx_indice() ya es otro)
+
+static void monta_presentacion(uint32_t *arriba, uint32_t *abajo) {
+    LARGE_INTEGER fr;
+    QueryPerformanceFrequency(&fr);
+    int e = video_escala(), P = doble_P, Q = gx_anterior(P);
+    int np = gx_nsub(P), nq = gx_nsub(Q), n = ((np < nq ? np : nq) + 1) / 2;
+    uint32_t *ha = e > 1 ? hd_arriba : arriba, *hb = e > 1 ? hd_abajo : abajo;
+    size_t pant = (size_t)256 * e * 192 * e;
+    int64_t paso = fr.QuadPart / 60 / n, base = ventana_reloj() + fr.QuadPart * 12 / 1000;
+    for (int k = 1; k <= n; k++) {
+        int jx = (k * (np + 1) + n) / (2 * n), jy = ((n + k) * (nq + 1) + n) / (2 * n);  // redondeados
+        if (jx < 1) jx = 1;
+        if (jx > np) jx = np;
+        const uint16_t *cy = jy > nq ? gx_fin_color(Q) : gx_sub_color(Q, jy - 1);
+        const uint8_t *ay = jy > nq ? gx_fin_alfa(Q) : gx_sub_alfa(Q, jy - 1);
+        if (k < n) {
+            uint32_t *dst = ventana_reserva_intermedia();
+            memcpy(dst, ha, pant * 4);
+            memcpy(dst + pant, hb, pant * 4);
+            monta_doble(dst, dst + pant, gx_sub_color(P, jx - 1), gx_sub_alfa(P, jx - 1), cy, ay, e);
+            ventana_publica_intermedia(base + (k - 1) * paso);
+        } else {
+            monta_doble(ha, hb, gx_sub_color(P, jx - 1), gx_sub_alfa(P, jx - 1), cy, ay, e);
+            ventana_muestra_en(arriba, abajo, base + (n - 1) * paso);
+        }
+    }
+}
+
 static DWORD WINAPI hilo_monta(LPVOID arg) {
     (void)arg;
     static uint32_t arriba[256 * 192], abajo[256 * 192];
     for (;;) {
         WaitForSingleObject(ev_foto, INFINITE);
+        if (doble_pendiente) {
+            doble_pendiente = 0;
+            monta_presentacion(doble_arriba, doble_abajo);
+            InterlockedExchange(&montando, 0);
+            continue;
+        }
         banco_act = banco_foto;
         c3_act = foto.c3; a3_act = foto.a3; c3hd_act = foto.c3hd; a3hd_act = foto.a3hd;
+        LARGE_INTEGER m0, m1, m2;
+        QueryPerformanceCounter(&m0);
         monta(foto.io, foto.pal, foto.oam, &foto.t, arriba, abajo);
+        QueryPerformanceCounter(&m1);
         // imágenes intermedias entre el fotograma anterior y este, repartidas en el tiempo; luego este
         int ns = gx_nsub(foto.ind), e = video_escala();
+        if (gx_doble(foto.ind)) ns = 0;  // cada dos fotogramas: no valen como intermedias de este
         LARGE_INTEGER fr;
         QueryPerformanceFrequency(&fr);
         int64_t dt = fr.QuadPart / 60 / (ns + 1);
@@ -696,6 +867,13 @@ static DWORD WINAPI hilo_monta(LPVOID arg) {
             ventana_publica_intermedia(base + j * dt);
         }
         ventana_muestra_en(arriba, abajo, base + ns * dt);
+        QueryPerformanceCounter(&m2);
+        {  // para MKDS_MIDE
+            double a = (double)(m1.QuadPart - m0.QuadPart) * 1000.0 / (double)fr.QuadPart;
+            double b = (double)(m2.QuadPart - m1.QuadPart) * 1000.0 / (double)fr.QuadPart;
+            g_monta_ms += a; g_inter_ms += b; g_monta_n++;
+            if (a + b > g_monta_max) g_monta_max = a + b;
+        }
         InterlockedExchange(&montando, 0);
     }
 }
@@ -704,14 +882,33 @@ void video_espera_montaje(void) {
     while (montando) SwitchToThread();
 }
 
+static void arranca_montaje(void) {
+    if (ev_foto) return;
+    ev_foto = CreateEventW(NULL, FALSE, FALSE, NULL);
+    HANDLE h = CreateThread(NULL, 0, hilo_monta, NULL, 0, NULL);
+    SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);  // el juego primero
+    CloseHandle(h);
+}
+
+// Tras video_dibuja con la captura encendida: si hay pasos de las dos vistas, las imágenes de la presentación van
+// al hilo de montaje (devuelve 1); si no, 0 y se enseña esta tal cual. arriba y abajo tienen que seguir valiendo
+// hasta video_espera_montaje.
+int video_presentacion(uint32_t *arriba, uint32_t *abajo) {
+    int P = gx_indice(), Q = gx_anterior(P);
+    if (!gx_doble(P) || !gx_doble(Q) || !gx_nsub(P) || !gx_nsub(Q)) return 0;
+    arranca_montaje();
+    doble_P = P;
+    doble_arriba = arriba;
+    doble_abajo = abajo;
+    doble_pendiente = 1;
+    InterlockedExchange(&montando, 1);
+    SetEvent(ev_foto);
+    return 1;
+}
+
 void video_dibuja_aparte(const uint8_t *io9) {
-    if (!ev_foto) {
-        ev_foto = CreateEventW(NULL, FALSE, FALSE, NULL);
-        HANDLE h = CreateThread(NULL, 0, hilo_monta, NULL, 0, NULL);
-        SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);  // el juego primero
-        CloseHandle(h);
-    }
-    if (montando) return;  // aún va por la anterior: esta se salta (el juego no espera)
+    arranca_montaje();
+    if (montando) { g_fotos_saltadas++; return; }  // aún va por la anterior: esta se salta (el juego no espera)
     memcpy(foto.io, io9, sizeof foto.io);
     memcpy(foto.pal, g_paleta, sizeof foto.pal);
     memcpy(foto.oam, g_oam, sizeof foto.oam);
@@ -751,19 +948,29 @@ static void monta(const uint8_t *io9, const uint8_t *pal, const uint8_t *oam, Ta
     for (int y = 0; y < 192; y++) {
         memset(lin_a15, 0, sizeof lin_a15);
         if (powcnt & 2) dibuja_linea(&a, y, sal_a + y * 256);
-        else memset(sal_a + y * 256, 0, 256 * 4);
+        else { memset(sal_a + y * 256, 0, 256 * 4); memset(src_fin[0], 0, sizeof src_fin[0]); }
         if (powcnt & 2) memcpy(marca_f[y], marca3d, 256);
         else memset(marca_f[y], 0, 256);
         hofs_f[y] = hofs_3d;
         brillo_f[y] = brillo_a;
         if (cap >> 31) captura_linea(io9, cap, y);
         if (powcnt & 0x200) dibuja_linea(&b, y, sal_b + y * 256);
-        else memset(sal_b + y * 256, 0, 256 * 4);
-        if (video_escala() > 1) {
-            // con la captura encendida, sin 3D grande: la otra pantalla enseña la copia (a tamaño DS) y cada
-            // pantalla temblaría entre nítida y no nítida un fotograma sí y otro no
-            linea_hd(sal_a == arriba ? hd_arriba : hd_abajo, sal_a + y * 256, y, !(cap >> 31));
-            linea_hd(sal_b == arriba ? hd_arriba : hd_abajo, sal_b + y * 256, y, 0);
+        else { memset(sal_b + y * 256, 0, 256 * 4); memset(src_fin[1], 0, sizeof src_fin[1]); }
+        int e = video_escala();
+        brillo_bf[y] = brillo_lin[1];
+        for (int x = 0; x < 256; x++) {  // los puntos del motor B que vienen de una copia del 3D
+            int c = 0, i = (cap >> 31) && src_fin[1][x] ? busca_cap(src_fin[1][x], e, &c) : -1;
+            idx_cap_f[y][x] = i >= 0 && m3_cap[c][i] ? (uint32_t)i + 1 : 0;
+        }
+        if (e > 1) {
+            // con la captura encendida (3D en las dos pantallas) también en grande: la otra pantalla enseña la copia,
+            // y la copia se guarda en grande (hd_cap) para que salga igual de nítida y no tiemble
+            uint32_t *hd_a = sal_a == arriba ? hd_arriba : hd_abajo;
+            linea_hd(hd_a, sal_a + y * 256, y, 1, 0);
+            linea_hd(sal_b == arriba ? hd_arriba : hd_abajo, sal_b + y * 256, y, 0, 1);
+            int bc = (cap >> 16) & 3;
+            if ((cap >> 31) && cap_e[bc] == e && y < 192)
+                memcpy(hd_cap[bc] + (size_t)y * e * 256 * e, hd_a + (size_t)y * e * 256 * e, (size_t)e * 256 * e * 4);
         }
     }
 }

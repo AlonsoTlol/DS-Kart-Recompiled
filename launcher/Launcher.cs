@@ -57,9 +57,9 @@ partial class Launcher {
                 using (var w = new WebClient()) {
                     w.Headers.Add("User-Agent", "DS-Kart-Recompiled-Launcher");
                     string json = w.DownloadString("https://api.github.com/repos/" + REPO + "/releases/latest");
-                    var m = System.Text.RegularExpressions.Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\"");
-                    Actualiza_(m.Groups[1].Value);
-                    r += " " + m.Groups[1].Value;
+                    string zip = ZipWindows(json);
+                    Actualiza_(zip);
+                    r += " " + zip;
                 }
             } catch (Exception ex) { r = ex.ToString(); }
             File.WriteAllText(args[1], r, new UTF8Encoding(false));

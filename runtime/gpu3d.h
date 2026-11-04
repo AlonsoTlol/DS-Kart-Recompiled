@@ -19,5 +19,10 @@ int gx_indice(void);
 int gx_nsub(int i);
 const uint16_t *gx_sub_color(int i, int j);
 const uint8_t *gx_sub_alfa(int i, int j);
+// 3D en las dos pantallas (la presentación): juego de salidas de cada vista y su imagen final
+int gx_doble(int i);
+int gx_anterior(int i);
+const uint16_t *gx_fin_color(int i);
+const uint8_t *gx_fin_alfa(int i);
 int gx_polis(void);                        // polígonos de la última escena (para depurar)
 uint64_t gx_frames(void);
