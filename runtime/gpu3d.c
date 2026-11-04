@@ -700,6 +700,12 @@ static uint16_t color_buf[MAXP];   // RGB555
 static uint8_t alfa_buf[MAXP];     // 0..31 (0 = nada)
 static uint32_t prof_buf[MAXP];
 static uint8_t id_buf[MAXP];
+// Sombras (las de los karts son volúmenes). Polígonos de modo 3, en dos partes:
+//  - la máscara (ID 0, caras de atrás): no pinta, marca los puntos donde falla la profundidad, es decir, donde el fondo
+//    del volumen queda por debajo de lo ya pintado;
+//  - la sombra (ID distinto de 0, caras de delante): se pinta solo en lo marcado y si el punto no tiene su mismo ID.
+// La marca se borra al empezar cada máscara nueva.
+static uint8_t sombra_buf[MAXP];
 // Lo pintado: un anillo de 3 juegos. El hilo de pintar escribe el siguiente al actual; el montaje de la
 // imagen (otro hilo) usa el que le toca durante un fotograma sin que se lo pisen.
 typedef struct {
@@ -728,7 +734,8 @@ static void prepara(const Trabajo *tj, const Poli *lst, int n) {
         const Poli *p = &lst[k];
         if (p->n < 3) continue;  // fuera de la vista
         int alfa = (p->attr >> 16) & 31, modo = (p->attr >> 4) & 3;
-        if (alfa == 0 || modo == 3) continue;  // alambre y sombras: de momento no se pintan
+        int mascara = modo == 3 && ((p->attr >> 24) & 63) == 0;  // la máscara de una sombra: ni color ni textura
+        if (alfa == 0 && !mascara) continue;  // alambre: de momento no se pinta
         PP *q = &pp[npp];
         float area = 0;
         for (int i = 0; i < p->n; i++) {
@@ -754,9 +761,9 @@ static void prepara(const Trabajo *tj, const Poli *lst, int n) {
         q->teximage = p->teximage;
         q->pltt = p->pltt;
         q->modo = (uint8_t)modo;
-        q->alfa = (uint8_t)alfa;
+        q->alfa = (uint8_t)(mascara ? 31 : alfa);
         q->id = (uint8_t)((p->attr >> 24) & 63);
-        q->texturas = (disp3d & 1) && fmt != 0;
+        q->texturas = (disp3d & 1) && fmt != 0 && !mascara;
         q->prof_igual = (p->attr >> 14) & 1;
         q->act_prof_trasl = (p->attr >> 11) & 1;
         q->translucido = (uint8_t)p->translucido;
@@ -788,6 +795,7 @@ static void triangulo(const PP *p, const VP *A, const VP *B, const VP *C, int yb
     uint16_t disp3d = (uint16_t)(io[0x60] | io[0x61] << 8);
     int prueba_alfa = (disp3d >> 2) & 1, ref_alfa = io[0x340] & 31, mezcla_alfa = (disp3d >> 3) & 1;
     int modo = p->modo, alfa_poli = p->alfa, idp = p->id, va = alfa_poli * 2 + 1;
+    int mascara = modo == 3 && idp == 0, sombra = modo == 3 && idp != 0;
     const float eps = -1e-4f;
     for (int y = y0; y <= y1; y++) {
         float py = (float)y + 0.5f;
@@ -819,7 +827,13 @@ static void triangulo(const PP *p, const VP *A, const VP *B, const VP *C, int yb
             float w = 1.0f / iwp;
             // w-buffer: w no es lineal en pantalla (1/w sí), así que se usa el w ya corregido
             uint32_t zi = tj->wbuf ? (uint32_t)(w * 0x1000) : (uint32_t)((zC + l0 * zA + l1 * zB) * 0xFFFFFF);
-            if (p->prof_igual ? (zi > prof_buf[i] + 0x200 || zi + 0x200 < prof_buf[i]) : zi >= prof_buf[i]) continue;
+            int detras = p->prof_igual ? (zi > prof_buf[i] + 0x200 || zi + 0x200 < prof_buf[i]) : zi >= prof_buf[i];
+            if (mascara) {
+                if (detras) sombra_buf[i] = 1;
+                continue;
+            }
+            if (detras) continue;
+            if (sombra && (!sombra_buf[i] || id_buf[i] == idp)) continue;
             int vr = (int)((rC + l0 * rA + l1 * rB) * w * 2 + 0.5f);
             int vg = (int)((gC + l0 * gA + l1 * gB) * w * 2 + 0.5f);
             int vb = (int)((bC + l0 * bA + l1 * bB) * w * 2 + 0.5f);
@@ -894,12 +908,16 @@ static void pinta_banda(int yb0, int yb1) {
     uint8_t ca = (clear >> 16) & 31, cid = (clear >> 24) & 63;
     uint32_t cz = (uint32_t)clear_prof * 0x200 + 0x1FF;
     for (int i = yb0 * AN; i < (yb1 + 1) * AN; i++) {
-        color_buf[i] = cc; alfa_buf[i] = ca; prof_buf[i] = cz; id_buf[i] = cid;
+        color_buf[i] = cc; alfa_buf[i] = ca; prof_buf[i] = cz; id_buf[i] = cid; sombra_buf[i] = 0;
     }
+    int en_mascara = 0;
     for (int pasada = 0; pasada < 2; pasada++)  // primero los opacos, luego los translúcidos
         for (int k = 0; k < npp; k++) {
             const PP *p = &pp[k];
             if (p->translucido != pasada) continue;
+            int mascara = p->modo == 3 && p->id == 0;
+            if (mascara && !en_mascara) memset(sombra_buf + yb0 * AN, 0, (size_t)(yb1 - yb0 + 1) * AN);
+            en_mascara = mascara;
             for (int j = 1; j + 1 < p->n; j++) triangulo(p, &p->v[0], &p->v[j], &p->v[j + 1], yb0, yb1, tj, pasada);
         }
 }

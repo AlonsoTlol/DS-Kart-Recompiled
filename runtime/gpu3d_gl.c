@@ -345,7 +345,7 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     glViewport(0, 0, an, al);
     glClearColor(cr * ca, cg * ca, cb * ca, ca);
     glClearDepth(((double)clear_prof * 0x200 + 0x1FF) / 16777215.0);
-    glClearStencil(0);
+    glClearStencil((GLint)((clear >> 24) & 63));
     glDepthMask(GL_TRUE);
     glStencilMask(0xFF);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -370,6 +370,8 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     int ngv = 0;
     GLuint tex_tanda = 0;
     int clave_tanda = -1;
+    int en_mascara = 0;
+    // La plantilla guarda el ID del punto (bits 0-5), si es translúcido (bit 6) y la marca de la sombra (bit 7)
     for (int pasada = 0; pasada < 2; pasada++)  // primero los opacos, luego los translúcidos (como la CPU)
         for (int k = 0; k <= n; k++) {
             const PP *p = k < n ? &pp[k] : NULL;
@@ -378,10 +380,11 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
             int clave = -2;
             if (p) {
                 if (p->texturas) tx = textura(p->teximage, p->pltt);
-                // estado: escribe profundidad, plantilla (ID), repetir/espejo de la textura
+                // estado: escribe profundidad, ID, translúcido, repetir/espejo de la textura, máscara o sombra
                 int escribe = !pasada || p->act_prof_trasl;
-                clave = escribe | (pasada ? (p->id + 1) << 1 : 0) | (int)((p->teximage >> 16) & 15) << 8 |
-                        p->prof_igual << 12;
+                int tipo = p->modo != 3 ? 0 : p->id ? 2 : 1;
+                clave = (tipo ? 0 : escribe) | p->id << 1 | pasada << 7 | (int)((p->teximage >> 16) & 15) << 8 |
+                        p->prof_igual << 12 | tipo << 13;
             }
             if (ngv && (!p || tx != tex_tanda || clave != clave_tanda)) {  // se dibuja lo que había
                 glBindTexture(GL_TEXTURE_2D, tex_tanda);
@@ -391,11 +394,40 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, r & 2 ? (r & 8 ? GL_MIRRORED_REPEAT : GL_REPEAT) : GL_CLAMP_TO_EDGE);
                 }
                 glDepthMask(clave_tanda & 1 ? GL_TRUE : GL_FALSE);
-                int id = (clave_tanda >> 1) & 127;
-                if (id) glStencilFunc(GL_NOTEQUAL, id, 0xFF);
-                else glStencilFunc(GL_ALWAYS, 0, 0xFF);
-                glDepthFunc(clave_tanda >> 12 & 1 ? GL_LEQUAL : GL_LESS);  // "profundidad igual": ya va algo por delante
-                glDrawArrays(GL_TRIANGLES, 0, ngv);
+                int id = (clave_tanda >> 1) & 63, trasl = (clave_tanda >> 7) & 1, tipo = clave_tanda >> 13;
+                GLenum prof = clave_tanda >> 12 & 1 ? GL_LEQUAL : GL_LESS;  // "profundidad igual": ya va algo por delante
+                if (tipo == 1) {  // máscara: marca donde falla la profundidad (la marca se borra al empezar cada una)
+                    glStencilMask(0x80);
+                    if (!en_mascara) glClear(GL_STENCIL_BUFFER_BIT);
+                    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+                    glStencilFunc(GL_ALWAYS, 0x80, 0xFF);
+                    glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP);
+                    glDepthFunc(prof);
+                    glDrawArrays(GL_TRIANGLES, 0, ngv);
+                    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                } else if (tipo == 2) {  // sombra: primero quita la marca de los puntos con su ID
+                    glStencilMask(0x80);
+                    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+                    glStencilFunc(GL_EQUAL, id, 0x3F);
+                    glStencilOp(GL_KEEP, GL_KEEP, GL_ZERO);
+                    glDepthFunc(GL_ALWAYS);
+                    glDrawArrays(GL_TRIANGLES, 0, ngv);
+                    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                    // y se pinta en lo marcado: la referencia no tiene el bit 7, así que "distinto" es "marcado"
+                    glStencilMask(0xFF);
+                    glStencilFunc(GL_NOTEQUAL, id | 0x40, 0x80);
+                    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+                    glDepthFunc(prof);
+                    glDrawArrays(GL_TRIANGLES, 0, ngv);
+                } else {
+                    glStencilMask(0x7F);
+                    if (trasl) glStencilFunc(GL_NOTEQUAL, id | 0x40, 0x7F);
+                    else glStencilFunc(GL_ALWAYS, id, 0x7F);
+                    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+                    glDepthFunc(prof);
+                    glDrawArrays(GL_TRIANGLES, 0, ngv);
+                }
+                en_mascara = tipo == 1;
                 ngv = 0;
             }
             if (!p) break;

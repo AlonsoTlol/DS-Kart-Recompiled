@@ -342,6 +342,9 @@ static LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SYSKEYDOWN:  // F10 es tecla de sistema: repetición instantánea
         if (wp == VK_F10) { repe_guarda(); return 0; }
         break;
+    case WM_SYSCOMMAND:  // ALT abre el menú de la ventana, que para este hilo (el del juego) hasta la siguiente tecla
+        if ((wp & 0xFFF0) == SC_KEYMENU) return 0;
+        break;
     case WM_ERASEBKGND: return 1;
     case WM_KEYUP:
         if (tecla_menu(wp)) menu_tecla(tecla_menu(wp), 0);
