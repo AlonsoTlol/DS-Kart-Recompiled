@@ -797,6 +797,7 @@ static uint8_t *a_foto(uint8_t *p) {  // un puntero a la VRAM de verdad -> el mi
 // fotograma siguiente); estas imágenes, en el hilo de montaje, para no quitarle tiempo al juego ni a la música.
 static uint32_t *doble_arriba, *doble_abajo;
 static volatile int doble_pendiente;
+static int presentacion_fuera;  // fotogramas seguidos sin enseñar (video_presentacion)
 static int doble_P;  // el juego de salidas de este trabajo (en la siguiente VBlank gx_indice() ya es otro)
 
 static void monta_presentacion(uint32_t *arriba, uint32_t *abajo) {
@@ -895,6 +896,15 @@ static void arranca_montaje(void) {
 // hasta video_espera_montaje.
 int video_presentacion(uint32_t *arriba, uint32_t *abajo) {
     int P = gx_indice(), Q = gx_anterior(P);
+    // Si el juego llega tarde a un fotograma repite la escena, pero las pantallas se alternan igual: esa vista caería en
+    // la pantalla de la otra y se verían cambiadas un instante (el parpadeo, sobre todo a muchos FPS). Se queda la
+    // imagen anterior. En un fotograma normal el motor A acaba de pasar a la otra pantalla que la de su escena. Los dos
+    // fotogramas siguientes tampoco valen: la vista alternada se ha perdido y las dos pantallas enseñarían la misma.
+    if (((gx_doble(P) && gx_pantalla(P) == a_arriba) || gx_doble(P) != gx_doble(Q)) && presentacion_fuera < 6) {
+        presentacion_fuera++;
+        return 1;
+    }
+    presentacion_fuera = 0;
     if (!gx_doble(P) || !gx_doble(Q) || !gx_nsub(P) || !gx_nsub(Q)) return 0;
     arranca_montaje();
     doble_P = P;
@@ -907,6 +917,12 @@ int video_presentacion(uint32_t *arriba, uint32_t *abajo) {
 }
 
 void video_dibuja_aparte(const uint8_t *io9) {
+    // lo mismo: sin captura en medio de una presentación, las dos pantallas no cuadran hasta el siguiente fotograma
+    if (gx_doble(gx_indice()) && presentacion_fuera < 6) {
+        presentacion_fuera++;
+        return;
+    }
+    presentacion_fuera = 0;
     arranca_montaje();
     if (montando) { g_fotos_saltadas++; return; }  // aún va por la anterior: esta se salta (el juego no espera)
     memcpy(foto.io, io9, sizeof foto.io);

@@ -677,7 +677,7 @@ typedef struct {  // polígono listo para pintar
     VP v[MAX_VERT_POLI];
     int n;
     uint32_t teximage, pltt;
-    uint8_t modo, alfa, id, texturas, prof_igual, act_prof_trasl, translucido;
+    uint8_t modo, alfa, id, texturas, prof_igual, act_prof_trasl, translucido, niebla;
 } PP;
 
 typedef struct {  // lo que necesita el hilo de pintar (copiado al empezar la escena)
@@ -685,6 +685,7 @@ typedef struct {  // lo que necesita el hilo de pintar (copiado al empezar la es
     int wbuf, vp_x1, vp_y1, vp_x2, vp_y2, lst;
     int interp;  // se pueden hacer imágenes intermedias con la escena anterior
     int doble;   // 3D en las dos pantallas (captura alternando): cada vista viene cada dos fotogramas
+    int pantalla;  // el bit de POWCNT1 de esta escena: qué motor la pintó
     int vista;   // cuál de las dos es (con la suya se empareja); si no, 0
 } Trabajo;
 
@@ -716,6 +717,7 @@ typedef struct {
     uint16_t sub_color[7][MAXP];    // imágenes intermedias entre la escena anterior y esta (a tamaño 'esc')
     uint8_t sub_alfa[7][MAXP];
     int nsub;
+    int pantalla;                   // ver Trabajo
     int doble;                      // de una presentación con 3D en las dos pantallas: del fotograma de antes del anterior
 } Salida;
 #define NSAL 4
@@ -725,9 +727,52 @@ static volatile uint64_t cont_frames, cont_saltadas;
 volatile double g_render_ms_suma, g_render_ms_max;
 volatile int g_render_n, g_render_sub;
 
+// Niebla (DISP3DCNT bit 7, polígonos con el bit 15 de POLYGON_ATTR): cuanto más lejos, más se mezcla el color con
+// FOG_COLOR, según FOG_TABLE (32 densidades de 0 a 127 repartidas desde FOG_OFFSET). En la DS se hace al final con la
+// profundidad de cada punto; aquí, punto a punto al pintar cada polígono, igual que en la GPU. En MKDS solo la
+// encienden cinco circuitos (NOTAS.md).
+static int nb_t[34], nb_r, nb_g, nb_b, nb_sh, hay_niebla;
+static uint32_t nb_off;
+
+static void niebla_prepara(const uint8_t *io) {
+    uint16_t disp3d = (uint16_t)(io[0x60] | io[0x61] << 8);
+    hay_niebla = (disp3d & 0xC0) == 0x80;  // (con el bit 6 cambia solo el alfa: en MKDS no se usa)
+    if (!hay_niebla) return;
+    uint16_t c = (uint16_t)(io[0x358] | io[0x359] << 8);
+    nb_r = (c & 31) * 2; nb_g = ((c >> 5) & 31) * 2; nb_b = ((c >> 10) & 31) * 2;
+    nb_off = (uint32_t)((io[0x35C] | io[0x35D] << 8) & 0x7FFF) * 0x200;
+    nb_sh = (disp3d >> 8) & 15;
+    for (int i = 0; i < 32; i++) nb_t[i + 1] = io[0x360 + i] & 0x7F;
+    nb_t[0] = nb_t[1];
+    nb_t[33] = nb_t[32];
+}
+
+static int densidad(uint32_t z) {
+    uint32_t id = 0, fr = 0;
+    if (z >= nb_off) {
+        uint64_t q = (uint64_t)((z - nb_off) >> 2) << nb_sh;
+        if (q >> 22) id = 32;  // (id >= 32: al final de la tabla)
+        else { id = (uint32_t)(q >> 17); fr = (uint32_t)q & 0x1FFFF; }
+    }
+    int d = (int)(((uint64_t)nb_t[id] * (0x20000 - fr) + (uint64_t)nb_t[id + 1] * fr) >> 17);
+    return d >= 127 ? 128 : d;
+}
+
+// El fondo (CLEAR_COLOR, con su bit 15 de niebla), para la CPU y la GPU
+uint16_t gx_fondo_con_niebla(uint32_t clear, uint32_t z) {
+    uint16_t c = clear & 0x7FFF;
+    if (!hay_niebla || !((clear >> 15) & 1)) return c;
+    int d = densidad(z), r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31;
+    r = (nb_r / 2 * d + r * (128 - d)) >> 7;
+    g = (nb_g / 2 * d + g * (128 - d)) >> 7;
+    b = (nb_b / 2 * d + b * (128 - d)) >> 7;
+    return (uint16_t)(r | g << 5 | b << 10);
+}
+
 // Pasa los polígonos de la lista a coordenadas de pantalla y descarta los que no se ven
 static void prepara(const Trabajo *tj, const Poli *lst, int n) {
     uint16_t disp3d = (uint16_t)(tj->io[0x60] | tj->io[0x61] << 8);
+    niebla_prepara(tj->io);
     float vw = (float)(tj->vp_x2 - tj->vp_x1 + 1), vh = (float)(tj->vp_y2 - tj->vp_y1 + 1);
     npp = 0;
     for (int k = 0; k < n; k++) {
@@ -767,6 +812,7 @@ static void prepara(const Trabajo *tj, const Poli *lst, int n) {
         q->prof_igual = (p->attr >> 14) & 1;
         q->act_prof_trasl = (p->attr >> 11) & 1;
         q->translucido = (uint8_t)p->translucido;
+        q->niebla = hay_niebla && ((p->attr >> 15) & 1);
         npp++;
     }
 }
@@ -876,6 +922,12 @@ static void triangulo(const PP *p, const VP *A, const VP *B, const VP *C, int yb
             int a5 = ca >> 1;
             if (a5 == 0) continue;
             if (prueba_alfa && a5 <= ref_alfa) continue;
+            if (p->niebla) {
+                int dn = densidad(zi);
+                cr = (nb_r * dn + cr * (128 - dn)) >> 7;
+                cg = (nb_g * dn + cg * (128 - dn)) >> 7;
+                cb = (nb_b * dn + cb * (128 - dn)) >> 7;
+            }
             uint16_t col = (uint16_t)((cr >> 1) | (cg >> 1) << 5 | (cb >> 1) << 10);
             if (a5 < 31 && mezcla_alfa) {
                 if (capa_trasl && id_buf[i] == idp && alfa_buf[i] < 31 && alfa_buf[i] > 0) continue;
@@ -904,9 +956,9 @@ static void pinta_banda(int yb0, int yb1) {
     const uint8_t *io = tj->io;
     uint32_t clear = (uint32_t)(io[0x350] | io[0x351] << 8 | io[0x352] << 16 | io[0x353] << 24);
     uint16_t clear_prof = (uint16_t)((io[0x354] | io[0x355] << 8) & 0x7FFF);
-    uint16_t cc = clear & 0x7FFF;
-    uint8_t ca = (clear >> 16) & 31, cid = (clear >> 24) & 63;
     uint32_t cz = (uint32_t)clear_prof * 0x200 + 0x1FF;
+    uint16_t cc = gx_fondo_con_niebla(clear, cz);
+    uint8_t ca = (clear >> 16) & 31, cid = (clear >> 24) & 63;
     for (int i = yb0 * AN; i < (yb1 + 1) * AN; i++) {
         color_buf[i] = cc; alfa_buf[i] = ca; prof_buf[i] = cz; id_buf[i] = cid; sombra_buf[i] = 0;
     }
@@ -1039,6 +1091,57 @@ static int uv_cerca(const Poli *p, int j) {
 // con 3D en las dos pantallas cada vista va de dos en dos fotogramas: en ese tiempo se mueve el doble
 static float margen_mov = 1;
 
+// Al girar deprisa (derrapando) el juego cambia qué trozos del circuito dibuja y su sitio en la lista salta cientos de
+// polígonos: con la búsqueda de alrededor se quedaban sin pareja y, en la imagen intermedia, cada trozo así iba ya en su
+// sitio final mientras los de al lado seguían a medio camino (se abría el suelo). Última pasada: entre todos los que
+// quedan libres, el que tenga lo mismo (textura, paleta, tipo y coordenadas de textura) y esté más cerca, en coordenadas
+// de recorte: con polígonos detrás de la cámara, desplazamiento() no sirve.
+#define NCUBOS 4096
+static int cubo[NCUBOS], cubo_sig[MAX_POLIS];
+
+static unsigned clave_poli(uint32_t ti, uint32_t pl, uint32_t attr, int n) {
+    return ((ti * 2654435761u) ^ (pl * 40503u) ^ ((attr & 0xFFFF) * 2166136261u) ^ (uint32_t)n * 16777619u) >> 20;
+}
+
+// cuánto ha saltado el vértice que más se ha movido, con el w del polígono: un trozo de suelo grande tiene vértices
+// pegados a la cámara, y con su propio w casi cero cualquier giro parecía un salto
+static float dist_recorte(const Poli *p, int j) {
+    float m = 0, e = 1e-3f;
+    for (int k = 0; k < p->ncrudo; k++) e = fmaxf(e, fmaxf(fabsf(ant[j].v[k].w), fabsf(p->crudo[k].w)));
+    for (int k = 0; k < p->ncrudo; k++) {
+        const Vert *a = &ant[j].v[k], *b = &p->crudo[k];
+        float d = (fabsf(a->x - b->x) + fabsf(a->y - b->y)) / e;
+        if (d > m) m = d;
+    }
+    return m;
+}
+
+static int empareja_resto(const Poli *lst, int n) {
+    int hechos = 0;
+    memset(cubo, -1, sizeof cubo);
+    for (int k = nant - 1; k >= 0; k--) {
+        if (usado[k]) continue;
+        unsigned c = clave_poli(ant[k].teximage, ant[k].pltt, ant[k].attr, ant[k].n);
+        cubo_sig[k] = cubo[c];
+        cubo[c] = k;
+    }
+    for (int i = 0; i < n; i++) {
+        if (pareja[i] >= 0 || lst[i].ncrudo < 3) continue;
+        int mejor = -1;
+        float mejor_d = 0.6f * margen_mov;  // el límite de interpola(): más lejos no se mezclaría
+        for (int k = cubo[clave_poli(lst[i].teximage, lst[i].pltt, lst[i].attr, lst[i].ncrudo)]; k >= 0; k = cubo_sig[k]) {
+            if (usado[k] || !mismo(&lst[i], k) || !uv_igual(&lst[i], k)) continue;
+            float d = dist_recorte(&lst[i], k);
+            if (d < mejor_d) { mejor_d = d; mejor = k; }
+        }
+        if (mejor < 0) continue;
+        pareja[i] = mejor;
+        usado[mejor] = 1;
+        hechos++;
+    }
+    return hechos;
+}
+
 static int empareja(const Poli *lst, int n) {
     int j = 0, hechos = 0;
     memset(usado, 0, (size_t)nant);
@@ -1088,7 +1191,7 @@ static int empareja(const Poli *lst, int n) {
         j = mejor + 1;
         hechos++;
     }
-    return hechos;
+    return hechos + empareja_resto(lst, n);
 }
 
 static int interpola(const Poli *lst, int n, float t) {
@@ -1098,17 +1201,14 @@ static int interpola(const Poli *lst, int n, float t) {
         int j = pareja[i];
         if (j < 0) continue;  // nuevo: tal cual
         Vert v[4];
-        int lejos = 0;
+        if (dist_recorte(&lst[i], j) > 0.6f * margen_mov) continue;  // salto (cámara, reaparece): tal cual
         for (int k = 0; k < q->ncrudo; k++) {
             const Vert *a = &ant[j].v[k], *b = &lst[i].crudo[k];
-            float esc_w = fmaxf(fabsf(a->w), fabsf(b->w)) + 1e-3f;
-            if ((fabsf(a->x - b->x) + fabsf(a->y - b->y)) / esc_w > 0.6f * margen_mov) lejos = 1;  // salto (cámara, reaparece)
             v[k].x = a->x + (b->x - a->x) * t; v[k].y = a->y + (b->y - a->y) * t;
             v[k].z = a->z + (b->z - a->z) * t; v[k].w = a->w + (b->w - a->w) * t;
             v[k].r = a->r + (b->r - a->r) * t; v[k].g = a->g + (b->g - a->g) * t; v[k].b = a->b + (b->b - a->b) * t;
             v[k].s = a->s + (b->s - a->s) * t; v[k].t = a->t + (b->t - a->t) * t;
         }
-        if (lejos) continue;
         memcpy(q->v, v, sizeof(Vert) * q->ncrudo);
         q->n = recorta(q->v, q->ncrudo);
         if (q->n < 3) q->n = 0;
@@ -1180,6 +1280,7 @@ static DWORD WINAPI hilo_render(LPVOID arg) {
         }
         S->nsub = nsub;
         S->doble = trabajo.doble;
+        S->pantalla = trabajo.pantalla;
         prepara(&trabajo, lst, n);
         pinta_todo();
         guarda_anterior(lst, n);
@@ -1277,6 +1378,7 @@ void gx_vblank(const uint8_t *io9) {
     static int bit_antes = -1;
     int bit = io9[0x305] >> 7;
     trabajo.doble = al_momento && bit != bit_antes && sub_por_escena > 0;
+    trabajo.pantalla = bit;
     bit_antes = bit;
     trabajo.vista = trabajo.doble ? bit : 0;
     trabajo.interp = !al_momento || trabajo.doble;
@@ -1299,6 +1401,7 @@ const uint16_t *gx_sub_color(int i, int j) { return salidas[i].sub_color[j]; }
 const uint8_t *gx_sub_alfa(int i, int j) { return salidas[i].sub_alfa[j]; }
 // La presentación con 3D en las dos pantallas: juego de salidas de cada vista y su imagen final
 int gx_doble(int i) { return salidas[i].doble; }
+int gx_pantalla(int i) { return salidas[i].pantalla; }
 int gx_anterior(int i) { return (i + NSAL - 1) % NSAL; }
 const uint16_t *gx_fin_color(int i) { return esc > 1 ? salidas[i].hd_color : salidas[i].color; }
 const uint8_t *gx_fin_alfa(int i) { return esc > 1 ? salidas[i].hd_alfa : salidas[i].alfa; }

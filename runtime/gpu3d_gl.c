@@ -28,6 +28,7 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
 }
 #else
 #include <GL/gl.h>
+uint16_t gx_fondo_con_niebla(uint32_t clear, uint32_t z);
 
 // gpu3d.c: las texturas (de la VRAM) y su "huella" para saber si han cambiado
 uint64_t gx_tex_huella(uint32_t ti, uint32_t pltt);
@@ -39,7 +40,7 @@ typedef struct {
     VP v[10];
     int n;
     uint32_t teximage, pltt;
-    uint8_t modo, alfa, id, texturas, prof_igual, act_prof_trasl, translucido;
+    uint8_t modo, alfa, id, texturas, prof_igual, act_prof_trasl, translucido, niebla;
 } PP;
 
 // ---- OpenGL 2: lo que no trae opengl32.dll se pide al driver --------------------------------------------------
@@ -77,6 +78,7 @@ typedef char GLchar;
     X(GLint, glGetUniformLocation, (GLuint, const GLchar *)) \
     X(void, glUniform1i, (GLint, GLint)) \
     X(void, glUniform1f, (GLint, GLfloat)) \
+    X(void, glUniform1fv, (GLint, GLsizei, const GLfloat *)) \
     X(void, glUniform3fv, (GLint, GLsizei, const GLfloat *)) \
     X(void, glVertexAttribPointer, (GLuint, GLint, GLenum, GLboolean, GLsizei, const void *)) \
     X(void, glEnableVertexAttribArray, (GLuint)) \
@@ -110,7 +112,7 @@ static HDC dc;
 static int estado;  // 0 sin empezar, 1 listo, -1 no se puede (por la CPU)
 static GLuint prog, fbo, tex_color, rb_prof;
 static int fbo_an, fbo_al;
-static GLint u_tex, u_toon, u_resaltado, u_prueba, u_ref, u_wbuf, u_premult;
+static GLint u_tex, u_toon, u_resaltado, u_prueba, u_ref, u_wbuf, u_premult, u_nb_t, u_nb_off, u_nb_mul, u_nb_c;
 
 static const char *VS =
     "#version 120\n"
@@ -129,8 +131,11 @@ static const char *FS =
     "uniform vec3 u_toon[32];\n"
     "uniform int u_resaltado, u_prueba, u_wbuf, u_premult;\n"
     "uniform float u_ref;\n"
+    "uniform float u_nb_t[34], u_nb_off, u_nb_mul;\n"   // la niebla: ver densidad() en gpu3d.c
+    "uniform vec3 u_nb_c;\n"
     "varying vec3 v_col; varying vec2 v_st; varying vec4 v_par; varying vec2 v_tam;\n"
     "void main() {\n"
+    "  float pz = floor(v_par.z + 0.5);\n"            // 1 con textura, 2 con niebla
     "  int modo = int(v_par.x + 0.5);\n"
     "  vec3 v = clamp(floor(v_col * 2.0 + 0.5), 0.0, 63.0);\n"
     "  vec3 c = v;\n"
@@ -140,7 +145,7 @@ static const char *FS =
     "    c = u_resaltado != 0 ? min(v.r + t * 2.0, vec3(63.0)) : t * 2.0 + 1.0;\n"
     "    v = c;\n"
     "  }\n"
-    "  if (v_par.z > 0.5) {\n"
+    "  if (mod(pz, 2.0) > 0.5) {\n"
     "    vec4 tx = texture2D(u_tex, v_st / v_tam);\n"
     "    vec3 t5 = floor(tx.rgb * 31.0 + 0.5);\n"
     "    float a5 = floor(tx.a * 31.0 + 0.5);\n"
@@ -151,6 +156,18 @@ static const char *FS =
     "  }\n"
     "  float a5 = floor(ca / 2.0);\n"
     "  if (a5 < 1.0 || (u_prueba != 0 && a5 <= u_ref)) discard;\n"
+    "  if (pz > 1.5) {\n"
+    "    float z24 = u_wbuf != 0 ? (1.0 / gl_FragCoord.w) * 4096.0 : gl_FragCoord.z * 16777215.0;\n"
+    "    float id = 0.0, fr = 0.0;\n"
+    "    if (z24 >= u_nb_off) {\n"
+    "      float q = floor((z24 - u_nb_off) / 4.0) * u_nb_mul;\n"
+    "      id = floor(q / 131072.0);\n"
+    "      if (id >= 32.0) id = 32.0; else fr = (q - id * 131072.0) / 131072.0;\n"
+    "    }\n"
+    "    float d = floor(mix(u_nb_t[int(id)], u_nb_t[int(id) + 1], fr));\n"
+    "    if (d >= 127.0) d = 128.0;\n"
+    "    c = floor((u_nb_c * d + c * (128.0 - d)) / 128.0);\n"
+    "  }\n"
     "  float a = a5 / 31.0;\n"
     "  vec3 col = floor(c / 2.0) / 31.0;\n"
     "  gl_FragColor = vec4(u_premult != 0 ? col * a : col, a);\n"
@@ -224,6 +241,10 @@ static int empieza(void) {
     u_ref = p_glGetUniformLocation(prog, "u_ref");
     u_wbuf = p_glGetUniformLocation(prog, "u_wbuf");
     u_premult = p_glGetUniformLocation(prog, "u_premult");
+    u_nb_t = p_glGetUniformLocation(prog, "u_nb_t");
+    u_nb_off = p_glGetUniformLocation(prog, "u_nb_off");
+    u_nb_mul = p_glGetUniformLocation(prog, "u_nb_mul");
+    u_nb_c = p_glGetUniformLocation(prog, "u_nb_c");
     p_glUniform1i(u_tex, 0);
     p_glGenFramebuffers(1, &fbo);
     p_glGenRenderbuffers(1, &rb_prof);
@@ -335,12 +356,25 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     p_glUniform1f(u_ref, (float)(io[0x340] & 31));
     p_glUniform1i(u_wbuf, wbuf);
     p_glUniform1i(u_premult, !mezcla);
+    {
+        float t[34], c3[3] = {0, 0, 0};
+        uint16_t nc = (uint16_t)(io[0x358] | io[0x359] << 8);
+        c3[0] = (float)((nc & 31) * 2); c3[1] = (float)(((nc >> 5) & 31) * 2); c3[2] = (float)(((nc >> 10) & 31) * 2);
+        for (int i = 0; i < 32; i++) t[i + 1] = (float)(io[0x360 + i] & 0x7F);
+        t[0] = t[1];
+        t[33] = t[32];
+        p_glUniform1fv(u_nb_t, 34, t);
+        p_glUniform3fv(u_nb_c, 1, c3);
+        p_glUniform1f(u_nb_off, (float)((io[0x35C] | io[0x35D] << 8) & 0x7FFF) * 512.0f);
+        p_glUniform1f(u_nb_mul, (float)(1 << ((disp3d >> 8) & 15)));
+    }
 
     // fondo: CLEAR_COLOR (con el color ya multiplicado por su alfa) y CLEAR_DEPTH
     uint32_t clear = (uint32_t)(io[0x350] | io[0x351] << 8 | io[0x352] << 16 | io[0x353] << 24);
     float ca = (float)((clear >> 16) & 31) / 31.0f;
-    float cr = (float)(clear & 31) / 31.0f, cg = (float)((clear >> 5) & 31) / 31.0f, cb = (float)((clear >> 10) & 31) / 31.0f;
     uint16_t clear_prof = (uint16_t)((io[0x354] | io[0x355] << 8) & 0x7FFF);
+    uint16_t cc = gx_fondo_con_niebla(clear, (uint32_t)clear_prof * 0x200 + 0x1FF);
+    float cr = (float)(cc & 31) / 31.0f, cg = (float)((cc >> 5) & 31) / 31.0f, cb = (float)((cc >> 10) & 31) / 31.0f;
     p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glViewport(0, 0, an, al);
     glClearColor(cr * ca, cg * ca, cb * ca, ca);
@@ -446,7 +480,7 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
                     o->pos[3] = w;
                     o->col[0] = v->r * w; o->col[1] = v->g * w; o->col[2] = v->b * w;
                     o->st[0] = v->s * w; o->st[1] = v->t * w;
-                    o->par[0] = p->modo; o->par[1] = p->alfa; o->par[2] = p->texturas; o->par[3] = p->prof_igual;
+                    o->par[0] = p->modo; o->par[1] = p->alfa; o->par[2] = p->texturas + p->niebla * 2; o->par[3] = p->prof_igual;
                     o->tam[0] = tw; o->tam[1] = th;
                 }
             }
@@ -455,7 +489,6 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     // de vuelta a la CPU (la GPU guarda de abajo arriba; el color, multiplicado por el alfa)
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, an, al, GL_RGBA, GL_UNSIGNED_BYTE, lectura);
-    uint16_t cc = (uint16_t)(clear & 0x7FFF);
     static uint8_t a5[256];  // de 8 bits a 5
     if (!a5[255]) for (int i = 0; i < 256; i++) a5[i] = (uint8_t)((i * 31 + 127) / 255);
     for (int y = 0; y < al; y++) {
