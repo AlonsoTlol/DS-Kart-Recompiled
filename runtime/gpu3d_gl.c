@@ -1,4 +1,4 @@
-// 3D por la GPU (experimental; de momento solo en Windows). Pinta la misma lista de polígonos que el rasterizador
+// 3D por la GPU (experimental). Pinta la misma lista de polígonos que el rasterizador
 // de gpu3d.c (ya recortados, en pantalla y sin los que no miran a la cámara) con OpenGL 2.1, en un contexto propio
 // y oculto del hilo de pintar, y lee la imagen a los mismos búferes (RGB555 y alfa 0..31). Así todo lo demás (el
 // 2D, la captura, las repeticiones, las imágenes intermedias) sigue igual. Si algo falla al empezar (sin OpenGL 2,
@@ -11,6 +11,8 @@
 //   - translúcidos: la imagen guarda el color multiplicado por el alfa; así, sobre lo vacío el color queda tal
 //     cual y sobre lo opaco se mezcla. El alfa, el mayor de los dos. Al leer se divide.
 //   - mismo ID translúcido sobre sí mismo: no se pinta (plantilla con ID + 1)
+//   - antialiasing (DISP3DCNT bit 4): multimuestreo; los bordes salen con alfa parcial y video.c los mezcla con el fondo.
+//     Si la tarjeta no lo tiene, sin él.
 #include "compat.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -20,14 +22,16 @@
 int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf, uint16_t *color, uint8_t *alfa,
                int an, int al);
 
-#ifndef _WIN32
-int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf, uint16_t *color, uint8_t *alfa,
-               int an, int al) {
-    (void)lista; (void)n; (void)tam_pp; (void)io; (void)wbuf; (void)color; (void)alfa; (void)an; (void)al;
-    return 0;  // en Linux y macOS, por la CPU
-}
-#else
+#ifdef _WIN32
 #include <GL/gl.h>
+#define PIDE_GL(n) wglGetProcAddress(n)
+typedef char GLchar;
+#else
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
+#define PIDE_GL(n) SDL_GL_GetProcAddress(n)
+int ventana_gl3d(void);  // ventana_sdl.c: pone aquí el contexto oculto del 3D
+#endif
 uint16_t gx_fondo_con_niebla(uint32_t clear, uint32_t z);
 
 // gpu3d.c: las texturas (de la VRAM) y su "huella" para saber si han cambiado
@@ -44,7 +48,6 @@ typedef struct {
 } PP;
 
 // ---- OpenGL 2: lo que no trae opengl32.dll se pide al driver --------------------------------------------------
-typedef char GLchar;
 #define GL_FRAGMENT_SHADER 0x8B30
 #define GL_VERTEX_SHADER 0x8B31
 #define GL_COMPILE_STATUS 0x8B81
@@ -54,6 +57,11 @@ typedef char GLchar;
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_DEPTH_ATTACHMENT 0x8D00
 #define GL_STENCIL_ATTACHMENT 0x8D20
+#define GL_MAX_SAMPLES 0x8D57
+#define GL_MULTISAMPLE 0x809D
+#define GL_RGBA8 0x8058
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
 #define GL_DEPTH24_STENCIL8 0x88F0
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
 #define GL_MIRRORED_REPEAT 0x8370
@@ -96,22 +104,57 @@ typedef char GLchar;
 #define DECLARA(r, f, a) static r(APIENTRY *p_##f) a;
 FUNCIONES(DECLARA)
 
+// opcionales (multimuestreo)
+static void(APIENTRY *p_glRenderbufferStorageMultisample)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
+static void(APIENTRY *p_glBlitFramebuffer)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
+
 static int carga_funciones(void) {
     int ok = 1;
 #define CARGA(r, f, a) \
-    p_##f = (r(APIENTRY *) a)(void (*)(void))wglGetProcAddress(#f); \
-    if (!p_##f) p_##f = (r(APIENTRY *) a)(void (*)(void))wglGetProcAddress(#f "EXT"); \
+    p_##f = (r(APIENTRY *) a)(void (*)(void))PIDE_GL(#f); \
+    if (!p_##f) p_##f = (r(APIENTRY *) a)(void (*)(void))PIDE_GL(#f "EXT"); \
     if (!p_##f) { fprintf(stderr, "[gpu] falta %s\n", #f); ok = 0; }
     FUNCIONES(CARGA)
+    p_glRenderbufferStorageMultisample = (void(APIENTRY *)(GLenum, GLsizei, GLenum, GLsizei, GLsizei))(void (*)(void))
+        PIDE_GL("glRenderbufferStorageMultisample");
+    p_glBlitFramebuffer = (void(APIENTRY *)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum))
+        (void (*)(void))PIDE_GL("glBlitFramebuffer");
     return ok;
 }
 
 // ---- el contexto (una ventana oculta del hilo de pintar) -----------------------------------------------------------
+#ifdef _WIN32
 static HWND vent;
 static HDC dc;
+
+static int abre_contexto(void) {
+    WNDCLASSW wc = {0};
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = GetModuleHandleW(NULL);
+    wc.lpszClassName = L"DSKartRecompiled3D";
+    RegisterClassW(&wc);
+    vent = CreateWindowExW(0, wc.lpszClassName, L"", WS_POPUP, 0, 0, 16, 16, NULL, NULL, wc.hInstance, NULL);
+    if (!vent) return 0;
+    dc = GetDC(vent);
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof pfd;
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
+    int pf = ChoosePixelFormat(dc, &pfd);
+    if (!pf || !SetPixelFormat(dc, pf, &pfd)) return 0;
+    HGLRC rc = wglCreateContext(dc);
+    return rc && wglMakeCurrent(dc, rc);
+}
+#else
+static int abre_contexto(void) { return ventana_gl3d(); }
+#endif
+
 static int estado;  // 0 sin empezar, 1 listo, -1 no se puede (por la CPU)
-static GLuint prog, fbo, tex_color, rb_prof;
-static int fbo_an, fbo_al;
+static GLuint prog, fbo, tex_color, rb_prof, fbo_ms, rb_color_ms, rb_prof_ms;
+static int fbo_an, fbo_al, muestras;
+volatile int g_suavizado = 1;  // gx_pon_suavizado (menú)
 static GLint u_tex, u_toon, u_resaltado, u_prueba, u_ref, u_wbuf, u_premult, u_nb_t, u_nb_off, u_nb_mul, u_nb_c;
 
 static const char *VS =
@@ -193,24 +236,7 @@ static GLuint compila(GLenum tipo, const char *src) {
 enum { A_POS, A_COL, A_ST, A_PAR, A_TAM };
 
 static int empieza(void) {
-    WNDCLASSW wc = {0};
-    wc.lpfnWndProc = DefWindowProcW;
-    wc.hInstance = GetModuleHandleW(NULL);
-    wc.lpszClassName = L"DSKartRecompiled3D";
-    RegisterClassW(&wc);
-    vent = CreateWindowExW(0, wc.lpszClassName, L"", WS_POPUP, 0, 0, 16, 16, NULL, NULL, wc.hInstance, NULL);
-    if (!vent) return 0;
-    dc = GetDC(vent);
-    PIXELFORMATDESCRIPTOR pfd = {0};
-    pfd.nSize = sizeof pfd;
-    pfd.nVersion = 1;
-    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
-    pfd.iPixelType = PFD_TYPE_RGBA;
-    pfd.cColorBits = 32;
-    int pf = ChoosePixelFormat(dc, &pfd);
-    if (!pf || !SetPixelFormat(dc, pf, &pfd)) return 0;
-    HGLRC rc = wglCreateContext(dc);
-    if (!rc || !wglMakeCurrent(dc, rc)) return 0;
+    if (!abre_contexto()) return 0;
     const char *ver = (const char *)glGetString(GL_VERSION);
     fprintf(stderr, "[gpu] OpenGL %s (%s)\n", ver ? ver : "?", (const char *)glGetString(GL_RENDERER));
     if (!ver || ver[0] < '2' || !carga_funciones()) return 0;
@@ -249,10 +275,41 @@ static int empieza(void) {
     p_glGenFramebuffers(1, &fbo);
     p_glGenRenderbuffers(1, &rb_prof);
     glGenTextures(1, &tex_color);
+    if (p_glRenderbufferStorageMultisample && p_glBlitFramebuffer) {
+        p_glGenFramebuffers(1, &fbo_ms);
+        p_glGenRenderbuffers(1, &rb_color_ms);
+        p_glGenRenderbuffers(1, &rb_prof_ms);
+    }
     return 1;
 }
 
+// El búfer con varias muestras por punto; si no se puede, se pinta sin él
+static void pon_muestras(int an, int al, int n) {
+    muestras = 0;
+    if (!n || !fbo_ms) return;
+    GLint maximo = 0;
+    glGetIntegerv(GL_MAX_SAMPLES, &maximo);
+    if (n > maximo) n = maximo;
+    if (n < 2) return;
+    p_glBindRenderbuffer(GL_RENDERBUFFER, rb_color_ms);
+    p_glRenderbufferStorageMultisample(GL_RENDERBUFFER, n, GL_RGBA8, an, al);
+    p_glBindRenderbuffer(GL_RENDERBUFFER, rb_prof_ms);
+    p_glRenderbufferStorageMultisample(GL_RENDERBUFFER, n, GL_DEPTH24_STENCIL8, an, al);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_ms);
+    p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rb_color_ms);
+    p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb_prof_ms);
+    p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rb_prof_ms);
+    if (p_glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) muestras = n;
+    else fprintf(stderr, "[gpu] sin antialiasing: el framebuffer de %d muestras no vale\n", n);
+}
+
 static int pon_tamaño(int an, int al) {
+    static int quiere = -1;
+    int q = g_suavizado ? 4 : 0;
+    if (q != quiere || an != fbo_an || al != fbo_al) {
+        quiere = q;
+        pon_muestras(an, al, q);
+    }
     if (an == fbo_an && al == fbo_al) return 1;
     glBindTexture(GL_TEXTURE_2D, tex_color);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, an, al, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
@@ -335,8 +392,10 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
         estado = empieza() ? 1 : -1;
         if (estado < 0) { fprintf(stderr, "[gpu] no se puede: el 3D va por la CPU\n"); return 0; }
     }
+#ifdef _WIN32
     MSG m;  // la ventana oculta es de este hilo: que no se le acumulen mensajes
     while (PeekMessageW(&m, NULL, 0, 0, PM_REMOVE)) DispatchMessageW(&m);
+#endif
     if (!pon_tamaño(an, al)) { estado = -1; return 0; }
     turno++;
     const PP *pp = (const PP *)lista;
@@ -375,7 +434,8 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     uint16_t clear_prof = (uint16_t)((io[0x354] | io[0x355] << 8) & 0x7FFF);
     uint16_t cc = gx_fondo_con_niebla(clear, (uint32_t)clear_prof * 0x200 + 0x1FF);
     float cr = (float)(cc & 31) / 31.0f, cg = (float)((cc >> 5) & 31) / 31.0f, cb = (float)((cc >> 10) & 31) / 31.0f;
-    p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, muestras ? fbo_ms : fbo);
+    if (disp3d & 0x10) glEnable(GL_MULTISAMPLE); else glDisable(GL_MULTISAMPLE);
     glViewport(0, 0, an, al);
     glClearColor(cr * ca, cg * ca, cb * ca, ca);
     glClearDepth(((double)clear_prof * 0x200 + 0x1FF) / 16777215.0);
@@ -487,6 +547,12 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
         }
 
     // de vuelta a la CPU (la GPU guarda de abajo arriba; el color, multiplicado por el alfa)
+    if (muestras) {
+        p_glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo_ms);
+        p_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+        p_glBlitFramebuffer(0, 0, an, al, 0, 0, an, al, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    }
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, an, al, GL_RGBA, GL_UNSIGNED_BYTE, lectura);
     static uint8_t a5[256];  // de 8 bits a 5
@@ -517,4 +583,3 @@ int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return 1;
 }
-#endif

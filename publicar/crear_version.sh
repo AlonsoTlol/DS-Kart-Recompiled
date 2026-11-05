@@ -37,13 +37,19 @@ empaqueta Launcher-Windows
 
 comun $D
 mkdir -p $D/linux
-cp linux/preparar.sh linux/jugar.sh linux/LEEME.txt $D/linux/
+cp linux/preparar.sh linux/jugar.sh linux/lanzador.sh linux/actualiza.py linux/logo.bmp linux/LEEME.txt $D/linux/
+mkdir -p $D/launcher
+cp launcher/lanzador.cpp $D/launcher/
+echo "$V" > $D/linux/version.txt
 cp linux/LEEME.txt $D/README.txt
 empaqueta Linux
 
 comun $D
 mkdir -p $D/linux $D/mac
-cp linux/preparar.sh linux/jugar.sh $D/linux/  # lo mismo que en Linux: jugar.command los llama
+cp linux/preparar.sh linux/jugar.sh linux/lanzador.sh linux/actualiza.py linux/logo.bmp $D/linux/  # lo mismo que en Linux
+mkdir -p $D/launcher
+cp launcher/lanzador.cpp $D/launcher/
+echo "$V" > $D/linux/version.txt
 cp mac/jugar.command mac/LEEME.txt $D/mac/
 cp mac/LEEME.txt $D/README.txt
 empaqueta Mac

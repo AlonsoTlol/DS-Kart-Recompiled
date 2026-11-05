@@ -14,9 +14,9 @@ Terminal says) in an issue on GitHub. Works on Intel and Apple chips (M1...).
    Homebrew (https://brew.sh, one line to paste) and run:
      brew install sdl2
 
-2. Copy your EUROPEAN Mario Kart DS ROM (game code AMCP) to rom/mkds.nds
-
-3. Double-click mac/jugar.command. If macOS says it can't be opened
+2. Double-click mac/jugar.command. A launcher window opens: in Settings, choose
+   your EUROPEAN Mario Kart DS ROM (game code AMCP) and enter your name, then
+   press PLAY. If macOS says it can't be opened
    because it's from an unidentified developer: right-click it > Open > Open.
    Or in the Terminal, inside this folder:
      sh mac/jugar.command
@@ -27,7 +27,7 @@ Terminal says) in an issue on GitHub. Works on Intel and Apple chips (M1...).
 Settings: in ajustes.ini (created the first time): NOMBRE (your name), ESCALA
 (1-4, 3D resolution), FPS (60/120/180/240), PANTALLA_COMPLETA (fullscreen 0/1),
 IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1),
-DISPOSICION (0 both screens the same size, 1 big top screen with the small touch
+GPU (0/1, 3D on the graphics card), DISPOSICION (0 both screens the same size, 1 big top screen with the small touch
 screen beside it, 16:9, 2 big top screen with the small touch screen on top of it).
 
 Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
@@ -54,9 +54,8 @@ los chips de Apple (M1...).
    Homebrew (https://brew.sh, una línea para pegar) y escribe:
      brew install sdl2
 
-2. Copia tu ROM de Mario Kart DS EUROPEO (código AMCP) a rom/mkds.nds
-
-3. Doble clic en mac/jugar.command. Si macOS dice que no se puede abrir por
+2. Doble clic en mac/jugar.command. Se abre el launcher: en Ajustes, elige tu ROM
+   de Mario Kart DS EUROPEO (código AMCP) y pon tu nombre, y dale a JUGAR. Si macOS dice que no se puede abrir por
    ser de un desarrollador no identificado: clic derecho > Abrir > Abrir.
    O en la Terminal, dentro de esta carpeta:
      sh mac/jugar.command

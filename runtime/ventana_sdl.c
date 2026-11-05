@@ -227,6 +227,10 @@ static void cambia_disposicion(int d) {
     calcula_destino();
 }
 
+static SDL_Window *ventana3d;
+static SDL_GLContext contexto3d;
+int ventana_gl3d(void) { return contexto3d && !SDL_GL_MakeCurrent(ventana3d, contexto3d); }
+
 void ventana_inicia(void) {
     InitializeCriticalSection(&cs_marcos);
     InitializeCriticalSection(&cs_destino);
@@ -245,6 +249,13 @@ void ventana_inicia(void) {
     contexto = SDL_GL_CreateContext(ventana);
     if (!contexto) { fprintf(stderr, "[ventana] sin OpenGL: %s\n", SDL_GetError()); exit(1); }
     SDL_GL_MakeCurrent(ventana, NULL);  // lo usa el hilo del pintor
+    // El 3D por la GPU (gpu3d_gl.c) va en su propio contexto, del hilo de pintar el 3D, pero la ventana se crea aquí: en
+    // macOS solo se puede en el hilo principal
+    ventana3d = SDL_CreateWindow("", 0, 0, 16, 16, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (ventana3d) {
+        contexto3d = SDL_GL_CreateContext(ventana3d);
+        SDL_GL_MakeCurrent(ventana3d, NULL);
+    }
     calcula_destino();
     if (getenv("MKDS_PANTALLA_COMPLETA") && atoi(getenv("MKDS_PANTALLA_COMPLETA"))) cambia_pantalla_completa();
     for (int i = 0; i < SDL_NumJoysticks(); i++)

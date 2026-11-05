@@ -1234,6 +1234,8 @@ static int nvis_de(const Poli *lst, int n) {
 // 3D por la GPU (MKDS_GPU=1 o el menú F1; de momento solo en Windows): si no se puede, por la CPU
 volatile int g_gpu3d;
 void gx_pon_gpu(int si) { g_gpu3d = si; }
+extern volatile int g_suavizado;  // gpu3d_gl.c
+void gx_pon_suavizado(int si) { g_suavizado = si; }
 int gl3d_pinta(const void *lista, int n, int tam_pp, const uint8_t *io, int wbuf, uint16_t *color, uint8_t *alfa,
                int an, int al);
 
@@ -1324,6 +1326,7 @@ static void arranca_hilos(void) {
     AN = 256 * esc;
     AL = 192 * esc;
     if (getenv("MKDS_GPU")) g_gpu3d = atoi(getenv("MKDS_GPU"));
+    if (getenv("MKDS_SUAVIZADO")) g_suavizado = atoi(getenv("MKDS_SUAVIZADO"));
     ev_trabajo = CreateEventW(NULL, FALSE, FALSE, NULL);
     ev_libre = CreateEventW(NULL, FALSE, TRUE, NULL);
     DWORD_PTR del_proceso = 0, del_sistema = 0;  // núcleos que puede usar el juego

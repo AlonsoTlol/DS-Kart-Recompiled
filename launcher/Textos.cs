@@ -37,6 +37,13 @@ static class Textos {
         A("JUGAR", "PLAY", "JOUER", "SPIELEN", "GIOCA");
         A("Repeticiones", "Replays", "Rediffusions", "Wiederholungen", "Replay");
         A("Listo para jugar", "Ready to play", "Prêt à jouer", "Bereit zum Spielen", "Pronto per giocare");
+        A("Sala por internet, hasta 8 jugadores", "Internet room, up to 8 players", "Salon par Internet, jusqu'à 8 joueurs",
+          "Internet-Raum, bis zu 8 Spieler", "Stanza via Internet, fino a 8 giocatori");
+        A("Crear sala", "Create room", "Créer un salon", "Raum erstellen", "Crea stanza");
+        A("Unirse", "Join", "Rejoindre", "Beitreten", "Entra");
+        A("Escribe el código de 6 letras que te pase el que creó la sala.", "Enter the 6-letter code from whoever created the room.",
+          "Saisis le code à 6 lettres de celui qui a créé le salon.", "Gib den 6-stelligen Code des Raumerstellers ein.",
+          "Scrivi il codice di 6 lettere di chi ha creato la stanza.");
         A("JUEGO", "GAME", "JEU", "SPIEL", "GIOCO");
         A("GRÁFICOS", "GRAPHICS", "GRAPHISMES", "GRAFIK", "GRAFICA");
         A("MODO", "MODE", "MODE", "MODUS", "MODALITÀ");

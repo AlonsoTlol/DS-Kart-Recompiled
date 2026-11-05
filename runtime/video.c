@@ -641,6 +641,14 @@ static uint16_t brillo_f[192];
 static int a_arriba;
 const uint32_t *video_hd(int abajo) { return abajo ? hd_abajo : hd_arriba; }
 
+// un punto de 3D con alfa a medias (borde con antialiasing, translúcido) sobre lo que hay debajo
+static inline uint32_t mezcla_3d(uint32_t fondo, uint32_t c, int a) {
+    if (a >= 31) return c;
+    uint32_t rb = ((c & 0xFF00FF) * (uint32_t)a + (fondo & 0xFF00FF) * (uint32_t)(31 - a)) / 31;
+    uint32_t g = ((c & 0xFF00) * (uint32_t)a + (fondo & 0xFF00) * (uint32_t)(31 - a)) / 31;
+    return (rb & 0xFF00FF) | (g & 0xFF00);
+}
+
 // Una línea de la DS a tamaño grande: lo que es 3D se coge del 3D pintado a más resolución; lo demás
 // (menús, marcador, mapa) se repite tal cual, sin difuminar
 static void linea_hd(uint32_t *dst, const uint32_t *baja, int y, int es_a, int motor) {
@@ -660,7 +668,7 @@ static void linea_hd(uint32_t *dst, const uint32_t *baja, int y, int es_a, int m
                     if (!a3[i]) { d[x * e + sx] = baja[x]; continue; }
                     uint16_t c = (uint16_t)(c3[i] & 0x7FFF);
                     if (bm == 1 || bm == 2) c = brillo(c, bm, f);
-                    d[x * e + sx] = a_rgb(c);
+                    d[x * e + sx] = mezcla_3d(baja[x], a_rgb(c), a3[i]);
                 }
             } else {
                 int ancho;
@@ -722,7 +730,7 @@ static void monta_intermedia(uint32_t *dst, const uint32_t *arriba, const uint32
                     if (!a3[i]) continue;
                     uint16_t c = (uint16_t)(c3[i] & 0x7FFF);
                     if (bm == 1 || bm == 2) c = brillo(c, bm, f);
-                    d[x * e + sx] = a_rgb(c);
+                    d[x * e + sx] = mezcla_3d(d[x * e + sx], a_rgb(c), a3[i]);
                 }
             }
         }
@@ -750,7 +758,7 @@ static void monta_doble(uint32_t *d_arriba, uint32_t *d_abajo, const uint16_t *c
                     if (!ax[i]) continue;
                     uint16_t c = (uint16_t)(cx[i] & 0x7FFF);
                     if (bm == 1 || bm == 2) c = brillo(c, bm, f);
-                    d[x * e + sx] = a_rgb(c);
+                    d[x * e + sx] = mezcla_3d(d[x * e + sx], a_rgb(c), ax[i]);
                 }
                 uint32_t idx = idx_cap_f[y][x];
                 if (!idx) continue;
@@ -760,7 +768,7 @@ static void monta_doble(uint32_t *d_arriba, uint32_t *d_abajo, const uint16_t *c
                     if (!ay[i]) continue;
                     uint16_t c = (uint16_t)(cy[i] & 0x7FFF);
                     if (bmb == 1 || bmb == 2) c = brillo(c, bmb, fb);
-                    db[x * e + sx] = a_rgb(c);
+                    db[x * e + sx] = mezcla_3d(db[x * e + sx], a_rgb(c), ay[i]);
                 }
             }
         }

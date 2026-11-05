@@ -51,13 +51,12 @@ If Windows SmartScreen warns you, click "More info" › "Run anyway" (the launch
 
 ### Linux (beta)
 
-Download `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. There's no launcher window yet: a script prepares the game and
-starts it, and the settings go in `ajustes.ini`.
+Download `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` opens the launcher, where you choose your ROM and
+your settings. Without a window, `sh linux/jugar.sh --terminal` prepares the game and starts it (settings in `ajustes.ini`).
 
 1. Install the tools (once): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
    `sudo pacman -S python clang sdl2` (Arch) or `sudo dnf install python3 clang SDL2-devel` (Fedora).
-2. Copy your ROM to `rom/mkds.nds`.
-3. In a terminal inside the folder: `sh linux/jugar.sh`. The first time it builds the game from your ROM
+2. In a terminal inside the folder: `sh linux/jugar.sh`, and choose your ROM in Settings. The first time it builds the game from your ROM
    (5–30 minutes depending on the CPU).
 
 Details in `README.txt`, inside the zip. Window, sound, keyboard and controllers go through SDL2.
@@ -87,7 +86,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 
 - ✅ Single player: Grand Prix, Time Trials, VS, Battle and Missions
 - ✅ Local multiplayer — over the same network or over the internet with a VPN such as Radmin VPN
-- 🧪 Linux (beta) — works, without a launcher window yet
+- 🧪 Linux (beta) — works, with its own launcher window
 - 🧪 macOS (beta, not tested yet) — the Linux version built on a Mac: see the Mac zip and tell us how it goes
 - 🌐 **Online play (beta):** use the game's own **Nintendo WFC** menu (Worldwide, Continental, Rivals, Friends) for up to 4 players. It runs on our own small server (no Wiimmfi needed); races go directly between players. Some networks (CG-NAT, mobile data) may not connect.
 
@@ -157,13 +156,12 @@ Si Windows SmartScreen avisa, pulsa "Más información" › "Ejecutar de todas f
 
 ### Linux (beta)
 
-Descarga `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. Todavía no hay ventana de launcher: un script prepara el juego y
-lo abre, y los ajustes van en `ajustes.ini`.
+Descarga `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` abre el launcher, donde eliges la ROM y los
+ajustes. Sin ventana, `sh linux/jugar.sh --terminal` prepara el juego y lo abre (ajustes en `ajustes.ini`).
 
 1. Instala las herramientas (una vez): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
    `sudo pacman -S python clang sdl2` (Arch) o `sudo dnf install python3 clang SDL2-devel` (Fedora).
-2. Copia tu ROM a `rom/mkds.nds`.
-3. En una terminal dentro de la carpeta: `sh linux/jugar.sh`. La primera vez genera el juego desde tu ROM
+2. En una terminal dentro de la carpeta: `sh linux/jugar.sh`, y elige tu ROM en Ajustes. La primera vez genera el juego desde tu ROM
    (de 5 a 30 minutos según el procesador).
 
 Más detalles en `README.txt`, dentro del zip. La ventana, el sonido, el teclado y los mandos van con SDL2.
@@ -193,7 +191,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 
 - ✅ Un jugador: Grand Prix, Contrarreloj, VS, Batalla y Misiones
 - ✅ Multijugador local: en la misma red o por internet con una VPN como Radmin VPN
-- 🧪 Linux (beta): funciona, todavía sin ventana de launcher
+- 🧪 Linux (beta): funciona, con su propia ventana de launcher
 - 🧪 macOS (beta, aún sin probar): la versión de Linux compilada en un Mac; mira el zip de Mac y cuéntanos cómo va
 - 🌐 **Online (beta):** usa el menú **Conexión Wi-Fi de Nintendo** del propio juego (Mundial, Continental, Con rival, Amigos) para hasta 4 jugadores. Funciona con nuestro propio servidor (sin Wiimmfi) y las carreras van directas entre jugadores. Algunas redes (CG-NAT, datos móviles) puede que no conecten.
 

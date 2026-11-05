@@ -22,6 +22,9 @@
 extern "C" {
 void gx_pon_fps(int fps);                       // gpu3d.c: imágenes por segundo (intermedias)
 void gx_pon_gpu(int si);                         // gpu3d.c: 3D por la GPU
+void gx_pon_suavizado(int si);                   // gpu3d.c: antialiasing (con la GPU)
+int gx_polis(void);                              // gpu3d.c: polígonos de la última escena
+int online_estado(char *codigo, int *jugadores); // wifi.c: la sala del online (la crea el launcher)
 void sonido_pon_volumen(int volumen, int silencio);  // sonido.c
 void mic_pon(int activo, int ganancia);          // microfono.c
 void nombre_cambia(void);                        // main_mkds.c: vuelve a leer MKDS_NOMBRE
@@ -88,7 +91,8 @@ static struct {
     char nombre[32];
     int idioma;       // 1 inglés, 2 francés, 3 alemán, 4 italiano, 5 español (al reiniciar)
     char ip[64];      // la del amigo (Radmin), para el multijugador
-    int gpu;          // 3D por la GPU (gpu3d_gl.c; solo Windows)
+    int gpu;          // 3D por la GPU (gpu3d_gl.c)
+    int suavizado;    // antialiasing con la GPU
 } aj;
 static char idioma_menu[4] = "es";
 static int pestaña_pedida = -1, pestaña_actual;
@@ -122,6 +126,7 @@ static void lee_ajustes(void) {
     aj.idioma = entero("MKDS_IDIOMA", 5);
     texto("MKDS_LOCAL_IP", aj.ip, sizeof aj.ip, "");
     aj.gpu = entero("MKDS_GPU", 0);
+    aj.suavizado = entero("MKDS_SUAVIZADO", 1);
     texto("MKDS_LAUNCHER_IDIOMA", idioma_menu, sizeof idioma_menu, "es");
 }
 
@@ -129,7 +134,7 @@ static void lee_ajustes(void) {
 static void guarda_ajustes(void) {
     char v[16][80];
     const char *claves[] = {"FPS", "ESCALA", "MOSTRAR_FPS", "VOLUMEN", "SILENCIO", "MICRO", "MICRO_GANANCIA",
-                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION"};
+                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION", "SUAVIZADO"};
     int n = (int)(sizeof claves / sizeof *claves);
     snprintf(v[0], 80, "%d", aj.fps); snprintf(v[1], 80, "%d", aj.escala); snprintf(v[2], 80, "%d", aj.mostrar_fps);
     snprintf(v[3], 80, "%d", aj.volumen); snprintf(v[4], 80, "%d", aj.silencio); snprintf(v[5], 80, "%d", aj.micro);
@@ -137,6 +142,7 @@ static void guarda_ajustes(void) {
     snprintf(v[9], 80, "%s", aj.ip); snprintf(v[10], 80, "%d", ventana_pantalla_completa());
     snprintf(v[11], 80, "%d", aj.gpu);
     snprintf(v[12], 80, "%d", ventana_disposicion());
+    snprintf(v[13], 80, "%d", aj.suavizado);
     static char lineas[128][256];
     int nl = 0, hecho[16] = {0};
     FILE *f = fopen("ajustes.ini", "r");
@@ -228,6 +234,11 @@ static const Texto textos[] = {
     {"3D con la tarjeta gráfica (experimental)", "3D on the graphics card (experimental)",
      "3D sur la carte graphique (expérimental)", "3D auf der Grafikkarte (experimentell)",
      "3D sulla scheda grafica (sperimentale)"},
+    {"Suavizar bordes", "Smooth edges", "Lisser les bords", "Kanten glätten", "Smussa i bordi"},
+    {"Antialiasing, como en la DS. Si te bajan los FPS, quítalo.", "Antialiasing, like on the DS. If your FPS drop, turn it off.",
+     "Anticrénelage, comme sur la DS. Si vos FPS baissent, désactivez-le.",
+     "Kantenglättung wie auf dem DS. Wenn die FPS sinken, schalte sie aus.",
+     "Antialiasing, come sul DS. Se gli FPS calano, disattivalo."},
     {"Gasta mucha menos CPU, sobre todo con resolución alta y más FPS. Si ves algo raro, quítalo y dínoslo.",
      "Uses much less CPU, especially with high resolution and more FPS. If something looks wrong, turn it off and tell us.",
      "Utilise beaucoup moins le processeur, surtout en haute résolution et avec plus de FPS. Si quelque chose cloche, désactive-le et dis-le-nous.",
@@ -541,7 +552,6 @@ static void pestaña_graficos(void) {
         if (ImGui::RadioButton(t, aj.escala == i)) { aj.escala = i; cambiado = 1; }
     }
     ayuda(T("Se aplica al volver a abrir el juego."));
-#ifdef _WIN32
     ImGui::Spacing();
     bool gpu = aj.gpu != 0;
     if (ImGui::Checkbox(T("3D con la tarjeta gráfica (experimental)"), &gpu)) {
@@ -550,7 +560,15 @@ static void pestaña_graficos(void) {
         cambiado = 1;
     }
     ayuda(T("Gasta mucha menos CPU, sobre todo con resolución alta y más FPS. Si ves algo raro, quítalo y dínoslo."));
-#endif
+    if (gpu) {
+        bool sv = aj.suavizado != 0;
+        if (ImGui::Checkbox(T("Suavizar bordes"), &sv)) {
+            aj.suavizado = sv;
+            gx_pon_suavizado(aj.suavizado);  // al momento
+            cambiado = 1;
+        }
+        ayuda(T("Antialiasing, como en la DS. Si te bajan los FPS, quítalo."));
+    }
     ImGui::Spacing();
     bool m = aj.mostrar_fps != 0;
     if (ImGui::Checkbox(T("Mostrar FPS"), &m)) { aj.mostrar_fps = m; cambiado = 1; }
@@ -629,6 +647,54 @@ static void pestaña_juego(void) {
 
 extern "C" int wfc_ping_ms(void);  // wfc.c: el ping con los rivales del online (-1 si no hay)
 
+// La sala (las pide el launcher; ver online_prueba en wifi.c), arriba y en el centro: el código para pasárselo a los
+// demás y qué hacer. Cuando empieza la carrera se quita (una carrera son más de 500 polígonos; los menús, menos).
+enum { ONL_NADA, ONL_CONECTANDO, ONL_SIN_SERVIDOR, ONL_SIN_STUN, ONL_NO_EXISTE, ONL_VERSION, ONL_LLENA, ONL_EN_SALA,
+       ONL_UNIDO, ONL_CERRADA };
+
+static int hay_aviso_sala(void) { return online_estado(NULL, NULL) != ONL_NADA && gx_polis() < 500; }
+
+static void aviso_sala(float W, float s) {
+    char codigo[8] = "";
+    int jugadores = 0, e = online_estado(codigo, &jugadores);
+    ImGui::SetNextWindowPos(ImVec2(W / 2, 12 * s), ImGuiCond_Always, ImVec2(0.5f, 0));
+    ImGui::SetNextWindowBgAlpha(0.78f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14 * s, 8 * s));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8 * s);
+    ImGui::Begin("##sala", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
+                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + W * 0.8f);
+    if (e == ONL_EN_SALA || e == ONL_UNIDO) {
+        ImGui::TextUnformatted(T(e == ONL_EN_SALA ? "Tu sala" : "Estás en la sala"));
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.79f, 0.25f, 1));
+        ImGui::TextUnformatted(codigo);
+        ImGui::PopStyleColor();
+        if (e == ONL_EN_SALA) {
+            ImGui::SameLine();
+            ImGui::Text(T("Jugadores en la sala: %d"), jugadores + 1);
+        }
+        ImGui::SetWindowFontScale(0.8f);
+        ImGui::TextUnformatted(T(e == ONL_EN_SALA
+                                     ? "Pasa el código a tus amigos. Luego, en el juego: Multijugador > Crear un grupo, y LISTO cuando estén todos."
+                                     : "Ahora, en el juego: Multijugador y elige el grupo de la lista."));
+        ImGui::SetWindowFontScale(1);
+    } else if (e == ONL_CONECTANDO) {
+        ImGui::TextUnformatted(T("Conectando…"));
+    } else {
+        static const char *errores[] = {NULL, NULL, "No se pudo conectar con el servidor de salas. ¿Hay internet?",
+                                        "No se pudo averiguar tu dirección en internet.", "Esa sala no existe (o ya se cerró).",
+                                        "Esa sala es de otra versión del juego: actualizad los dos.", "La sala está llena (8 jugadores).",
+                                        NULL, NULL, "La sala se ha cerrado."};
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.54f, 0.48f, 1));
+        ImGui::TextUnformatted(T(e >= 0 && e < 10 && errores[e] ? errores[e] : "La sala se ha cerrado."));
+        ImGui::PopStyleColor();
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+}
+
 static void contador_fps(float W, float s) {
     ImGui::SetNextWindowPos(ImVec2(W - 12 * s, 12 * s), ImGuiCond_Always, ImVec2(1, 0));
     ImGui::SetNextWindowBgAlpha(0.6f);
@@ -647,7 +713,7 @@ static void contador_fps(float W, float s) {
 
 extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
     if (!listo || ancho <= 0 || alto <= 0) return;
-    if (!abierto && !aj.mostrar_fps && wfc_ping_ms() < 0) return;
+    if (!abierto && !aj.mostrar_fps && wfc_ping_ms() < 0 && !hay_aviso_sala()) return;
     ImGuiIO &io = ImGui::GetIO();
     static double antes;
     double ahora = reloj_s();
@@ -662,6 +728,7 @@ extern "C" void menu_pinta(int ancho, int alto, int ancho_px, int alto_px) {
     ImGui_ImplOpenGL2_NewFrame();
     ImGui::NewFrame();
     if (aj.mostrar_fps || wfc_ping_ms() >= 0) contador_fps((float)ancho, s);
+    if (hay_aviso_sala()) aviso_sala((float)ancho, s);
     if (abierto) {
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(5, 6, 15, 165));
         float w = 640 * s, h = 560 * s;

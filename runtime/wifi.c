@@ -571,7 +571,7 @@ static void online_pide(int que) {
     onl.pedido = que;
 }
 
-// para el menú (menu.cpp)
+// para el aviso de la sala en pantalla (menu.cpp)
 void online_crear(void) { online_pide(1); }
 void online_unirse(const char *codigo) {
     int k = 0;
@@ -588,8 +588,8 @@ int online_estado(char *codigo, int *jugadores) {
     return onl.estado;
 }
 
-// pruebas sin tocar el menú: MKDS_ONLINE_CREAR=archivo crea una sala y escribe su código en ese archivo;
-// MKDS_ONLINE_UNIRSE=código (o @archivo, cuando exista) se une
+// Las salas se piden desde el launcher: MKDS_ONLINE_CREAR=1 crea una sala y MKDS_ONLINE_UNIRSE=código se une. Para
+// las pruebas, MKDS_ONLINE_CREAR=archivo también escribe el código en ese archivo y MKDS_ONLINE_UNIRSE=@archivo lo lee
 static void online_prueba(void) {
     static int hecho;
     if (hecho == 2 || ms_ahora < 1500) return;
@@ -597,7 +597,7 @@ static void online_prueba(void) {
     if (!c && !u) { hecho = 2; return; }
     if (c && !hecho) { hecho = 1; online_crear(); }
     if (c && hecho == 1 && onl.estado == ONL_EN_SALA) {
-        FILE *f = fopen(c, "w");
+        FILE *f = strcmp(c, "1") ? fopen(c, "w") : NULL;
         if (f) { fprintf(f, "%s\n", onl.codigo); fclose(f); }
         hecho = 2;
     }

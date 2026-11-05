@@ -313,6 +313,16 @@ partial class Launcher {
         Busca<Button>("Cerrar").Click += delegate { GuardaAjustes(); ventana.Close(); };
         Busca<Button>("Minimizar").Click += delegate { ventana.WindowState = WindowState.Minimized; };
         Busca<Button>("Jugar").Click += delegate { Juega(); };
+        Busca<Button>("CrearSala").Click += delegate { sala = "1"; Juega(); };
+        Busca<Button>("UnirseSala").Click += delegate {
+            string c = Busca<TextBox>("CodigoSala").Text.Trim().ToUpperInvariant();
+            if (c.Length != 6) {
+                Estado(T("Escribe el código de 6 letras que te pase el que creó la sala."), true);
+                return;
+            }
+            sala = c;
+            Juega();
+        };
         Busca<Button>("Repeticiones").Click += delegate {
             string rep = Path.Combine(carpeta, "repeticiones");
             Directory.CreateDirectory(rep);
@@ -474,6 +484,10 @@ partial class Launcher {
         Resumen();
     }
 
+    // Salas por internet (hasta 8, con el modo local): "1" crea una y seis letras se unen a esa. Lo hace el juego
+    // (online_prueba en wifi.c), que enseña el código arriba.
+    static string sala;
+
     static void Juega() {
         GuardaAjustes();
         // el nombre es obligatorio (lo necesitará el juego en línea): sin él, a Ajustes con el cursor en la casilla
@@ -498,6 +512,9 @@ partial class Launcher {
         psi.WorkingDirectory = carpeta;
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;  // sin la consola negra de los mensajes de depuración
+        if (sala == "1") psi.EnvironmentVariables["MKDS_ONLINE_CREAR"] = "1";
+        else if (sala != null) psi.EnvironmentVariables["MKDS_ONLINE_UNIRSE"] = sala;
+        sala = null;
         Process p;
         try { p = Process.Start(psi); }
         catch (Exception ex) { Estado(T("No se pudo abrir el juego: ") + ex.Message, true); return; }
@@ -982,6 +999,18 @@ partial class Launcher {
                 <Button x:Name='Actualizar' Style='{StaticResource Secundario}' Margin='14,0,0,0' Visibility='Collapsed'
                         BorderBrush='{StaticResource Amarillo}'>
                   <TextBlock Text='Actualizar' Foreground='{StaticResource Amarillo}'/>
+                </Button>
+              </StackPanel>
+              <TextBlock Text='Sala por internet, hasta 8 jugadores' Foreground='{StaticResource Suave}' FontSize='12' Margin='0,16,0,6'/>
+              <StackPanel Orientation='Horizontal'>
+                <Button x:Name='CrearSala' Style='{StaticResource Secundario}'>
+                  <TextBlock Text='Crear sala'/>
+                </Button>
+                <TextBox x:Name='CodigoSala' Width='96' MaxLength='6' CharacterCasing='Upper' Margin='14,0,0,0' Padding='10,7'
+                         FontSize='15' VerticalContentAlignment='Center' Background='#20254A' Foreground='#F3F4FF'
+                         BorderBrush='#2C3266' CaretBrush='#F3F4FF'/>
+                <Button x:Name='UnirseSala' Style='{StaticResource Secundario}' Margin='8,0,0,0'>
+                  <TextBlock Text='Unirse'/>
                 </Button>
               </StackPanel>
             </StackPanel>

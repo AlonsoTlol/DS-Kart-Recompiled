@@ -17,10 +17,14 @@ The game is NOT included: you need a dump of your own cartridge.
      then do steps 2 and 3 inside that same terminal ("distrobox enter mkds" the
      next times). Not tested on a Steam Deck yet: tell us how it goes!
 
-2. Copy your EUROPEAN Mario Kart DS ROM (game code AMCP) to rom/mkds.nds
-
-3. Open a terminal in this folder and run:
+2. Open a terminal in this folder and run:
      sh linux/jugar.sh
+   A launcher window opens. In Settings, choose your EUROPEAN Mario Kart DS ROM
+   (game code AMCP) and enter your name, then press PLAY. It also tells you when
+   there is a new version. To choose the file it uses zenity or kdialog; without
+   them, drag the .nds file onto the window.
+   Without a window (Steam Deck in Game Mode, SSH...) copy the ROM to rom/mkds.nds
+   and run: sh linux/jugar.sh --terminal
 
    The first time it translates your ROM's code and compiles it for your PC:
    it takes a while (5 to 30 minutes depending on the CPU). After that it
@@ -29,7 +33,7 @@ The game is NOT included: you need a dump of your own cartridge.
 Settings: in ajustes.ini (created the first time): NOMBRE (your name), ESCALA
 (1-4, 3D resolution), FPS (60/120/180/240), PANTALLA_COMPLETA (fullscreen 0/1),
 IDIOMA (1 English, 2 French, 3 German, 4 Italian, 5 Spanish), MICRO (0/1),
-DISPOSICION (0 both screens the same size, 1 big top screen with the small touch
+GPU (0/1, 3D on the graphics card), DISPOSICION (0 both screens the same size, 1 big top screen with the small touch
 screen beside it, 16:9, 2 big top screen with the small touch screen on top of it).
 
 Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
@@ -60,11 +64,14 @@ El juego NO viene incluido: necesitas una copia de tu propio cartucho.
      y haz los pasos 2 y 3 en esa misma terminal (las siguientes veces, primero
      "distrobox enter mkds"). Aún no probado en una Steam Deck: ¡cuéntanos!
 
-2. Copia tu ROM de Mario Kart DS EUROPEO (código AMCP) a la carpeta rom/
-   con el nombre mkds.nds  (o sea: rom/mkds.nds)
-
-3. Abre una terminal en esta carpeta y escribe:
+2. Abre una terminal en esta carpeta y escribe:
      sh linux/jugar.sh
+   Se abre el launcher. En Ajustes, elige tu ROM de Mario Kart DS EUROPEO
+   (código AMCP) y pon tu nombre, y dale a JUGAR. También avisa cuando hay una
+   versión nueva. Para elegir el archivo usa zenity o kdialog; sin ellos, arrastra
+   el .nds a la ventana.
+   Sin ventana (Steam Deck en modo juego, SSH...) copia la ROM a rom/mkds.nds y
+   usa: sh linux/jugar.sh --terminal
 
    La primera vez traduce el código de tu ROM y lo compila para tu PC:
    tarda bastante (de 5 a 30 minutos según el procesador). Las siguientes
