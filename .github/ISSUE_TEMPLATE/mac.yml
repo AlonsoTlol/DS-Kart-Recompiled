@@ -1,0 +1,85 @@
+name: "How did it go on your Mac? / ¿Cómo te ha ido en tu Mac?"
+description: "Nobody has tested the macOS version on a real Mac yet. Tell us how it went, even if it didn't work."
+title: "[Mac] "
+labels: ["macOS"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying it! Nobody on the team has a Mac, so your report is the only way to know how it works. A report that says "it didn't compile" helps just as much as one that says "it works".
+
+        ¡Gracias por probarlo! Nadie del equipo tiene un Mac, así que tu respuesta es la única forma de saber cómo funciona. Decir "no ha compilado" ayuda tanto como decir "funciona". Puedes responder en español.
+
+        Please don't attach or link the game or your ROM. / Por favor, no adjuntes ni enlaces el juego ni tu ROM.
+  - type: input
+    id: version
+    attributes:
+      label: "Game version / Versión del juego"
+      placeholder: "0.2.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: chip
+    attributes:
+      label: "Your Mac's chip / El chip de tu Mac"
+      options:
+        - "Apple (M1, M2, M3, M4...)"
+        - "Intel"
+        - "I don't know / No lo sé"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: "macOS version / Versión de macOS"
+      placeholder: "15.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: hasta
+    attributes:
+      label: "How far did you get? / ¿Hasta dónde llegaste?"
+      options:
+        - "It didn't compile / No compiló"
+        - "It compiled, but the launcher didn't open / Compiló, pero el launcher no se abrió"
+        - "The launcher opened, but the game didn't / El launcher se abrió, pero el juego no"
+        - "The game opened, but it closes or has problems / El juego se abrió, pero se cierra o tiene problemas"
+        - "It works well / Funciona bien"
+    validations:
+      required: true
+  - type: dropdown
+    id: gpu
+    attributes:
+      label: "3D on the graphics card (Settings) / 3D con la tarjeta gráfica (Ajustes)"
+      options:
+        - "I didn't try it / No lo he probado"
+        - "It works well / Funciona bien"
+        - "It looks wrong / Se ve mal"
+        - "The game closes / El juego se cierra"
+    validations:
+      required: true
+  - type: dropdown
+    id: sonido
+    attributes:
+      label: "Sound / Sonido"
+      options:
+        - "I didn't get that far / No llegué hasta ahí"
+        - "It works well / Funciona bien"
+        - "It has problems / Tiene problemas"
+    validations:
+      required: true
+  - type: input
+    id: rendimiento
+    attributes:
+      label: "How does it run? Settings and FPS / ¿Cómo va? Ajustes y FPS"
+      placeholder: "2x, 60 FPS, smooth / 2x, 60 FPS, va fluido"
+  - type: textarea
+    id: terminal
+    attributes:
+      label: "What the Terminal says / Lo que dice la Terminal"
+      description: "If something failed, paste the last lines here. If there is a fallos.txt file in the game folder, paste it too. / Si algo falló, pega aquí las últimas líneas. Si hay un archivo fallos.txt en la carpeta del juego, pégalo también."
+      render: shell
+  - type: textarea
+    id: mas
+    attributes:
+      label: "Anything else? / ¿Algo más?"

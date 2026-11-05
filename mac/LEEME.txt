@@ -5,8 +5,9 @@ DS Kart Recompiled for macOS (beta, not tested yet)
 Mario Kart DS for Mac, no emulator. Made by alontube together with Claude.
 The game is NOT included: you need a dump of your own cartridge.
 This is the Linux version built for the Mac. Nobody has tried it on a real Mac
-yet: if you do, please tell us how it went (works / doesn't / what the
-Terminal says) in an issue on GitHub. Works on Intel and Apple chips (M1...).
+yet: if you do, please tell us how it went, even if it didn't work:
+https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues/new?template=mac.yml
+Works on Intel and Apple chips (M1...).
 
 1. Install what's needed (once). Open the Terminal app and run:
      xcode-select --install
@@ -44,9 +45,9 @@ DS Kart Recompiled para macOS (beta, aún sin probar)
 Mario Kart DS para Mac, sin emulador. Hecho por alontube junto con Claude.
 El juego NO viene incluido: necesitas una copia de tu propio cartucho.
 Es la versión de Linux compilada para el Mac. Todavía nadie la ha probado en un
-Mac de verdad: si lo haces, cuéntanos en un issue de GitHub cómo ha ido
-(funciona / no funciona / qué sale en la Terminal). Vale para Intel y para
-los chips de Apple (M1...).
+Mac de verdad: si lo haces, cuéntanos cómo ha ido, aunque no haya funcionado:
+https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues/new?template=mac.yml
+Vale para Intel y para los chips de Apple (M1...).
 
 1. Instala lo necesario (una sola vez). Abre la app Terminal y escribe:
      xcode-select --install

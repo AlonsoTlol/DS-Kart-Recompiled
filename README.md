@@ -63,7 +63,8 @@ Details in `README.txt`, inside the zip. Window, sound, keyboard and controllers
 
 ### macOS (beta, not tested yet)
 
-Download `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` and follow its `README.txt`.
+Download `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` and follow its `README.txt`. Nobody on the team has a Mac, so please
+[tell us how it went](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues/new?template=mac.yml), even if it didn't work.
 
 ## System requirements
 
@@ -168,7 +169,8 @@ Más detalles en `README.txt`, dentro del zip. La ventana, el sonido, el teclado
 
 ### macOS (beta, aún sin probar)
 
-Descarga `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` y sigue su `README.txt`.
+Descarga `DS-Kart-Recompiled-Mac-vX.Y.Z.zip` y sigue su `README.txt`. Nadie del equipo tiene un Mac, así que, por favor,
+[cuéntanos cómo te ha ido](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues/new?template=mac.yml), aunque no haya funcionado.
 
 ## Requisitos del sistema
 
