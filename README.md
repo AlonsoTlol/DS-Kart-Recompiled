@@ -8,8 +8,9 @@
 
 <p align="center"><a href="https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest"><b>⬇️ Download the latest version</b></a></p>
 
-> ⚠️ **These are the first versions and they have plenty of bugs.** If you find one, please report it in
-> [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues) (what you were doing, and a screenshot or video if you can). Thanks!
+> 🏁 **Version 1.0 is out.** The whole game is playable on Windows; Linux, macOS and online play are still in beta.
+> If you find a bug, please report it in [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues)
+> (what you were doing, and a screenshot or video if you can). Thanks!
 
 ## What it is
 
@@ -90,6 +91,7 @@ These figures are estimates: so far it has been tested on an Intel Core i7-14700
 - 🧪 Linux (beta) — works, with its own launcher window
 - 🧪 macOS (beta, not tested yet) — the Linux version built on a Mac: see the Mac zip and tell us how it goes
 - 🌐 **Online play (beta):** use the game's own **Nintendo WFC** menu (Worldwide, Continental, Rivals, Friends) for up to 4 players. It runs on our own small server (no Wiimmfi needed); races go directly between players. Some networks (CG-NAT, mobile data) may not connect.
+- 🌐 **Internet rooms (beta):** in the launcher, one player presses **Create room** and shares the code; up to 8 players join with it, without Radmin. Then play from the game's Multiplayer menu.
 
 ## Credits
 
@@ -112,8 +114,9 @@ Fan project **not affiliated with Nintendo**. *Mario Kart* and *Nintendo DS* are
 
 <p align="center"><a href="https://github.com/AlonsoTlol/DS-Kart-Recompiled/releases/latest"><b>⬇️ Descargar la última versión</b></a></p>
 
-> ⚠️ **Son las primeras versiones y tienen muchos bugs.** Si encuentras alguno, súbelo a
-> [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues) (qué estabas haciendo y, si puedes, una captura o un vídeo). ¡Gracias!
+> 🏁 **Ya ha salido la versión 1.0.** Todo el juego se puede jugar en Windows; Linux, macOS y el online siguen en beta.
+> Si encuentras un fallo, súbelo a [Issues](https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues)
+> (qué estabas haciendo y, si puedes, una captura o un vídeo). ¡Gracias!
 
 ## Qué es
 
@@ -196,6 +199,7 @@ Son cifras aproximadas: de momento se ha probado en un Intel Core i7-14700KF con
 - 🧪 Linux (beta): funciona, con su propia ventana de launcher
 - 🧪 macOS (beta, aún sin probar): la versión de Linux compilada en un Mac; mira el zip de Mac y cuéntanos cómo va
 - 🌐 **Online (beta):** usa el menú **Conexión Wi-Fi de Nintendo** del propio juego (Mundial, Continental, Con rival, Amigos) para hasta 4 jugadores. Funciona con nuestro propio servidor (sin Wiimmfi) y las carreras van directas entre jugadores. Algunas redes (CG-NAT, datos móviles) puede que no conecten.
+- 🌐 **Salas por internet (beta):** en el launcher, uno pulsa **Crear sala** y pasa el código; con él entran hasta 8 jugadores, sin Radmin. Después se juega desde el menú Multijugador del juego.
 
 ## Créditos
 
