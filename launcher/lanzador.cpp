@@ -410,9 +410,10 @@ static void pagina_ajustes(void) {
     ImGui::TextDisabled("%s", T("Tu ROM"));
     ImGui::TextUnformatted(hay_rom() ? T("ROM lista") : T("Falta la ROM: elígela en Ajustes"));
     ImGui::SameLine();
-    if (dialogo.activo) ImGui::BeginDisabled();
+    int eligiendo = dialogo.activo;  // el botón lo cambia: el Begin y el End tienen que ir a la par
+    if (eligiendo) ImGui::BeginDisabled();
     if (ImGui::Button(T("Elegir ROM"))) { aviso[0] = 0; abre_dialogo(); }
-    if (dialogo.activo) ImGui::EndDisabled();
+    if (eligiendo) ImGui::EndDisabled();
     ImGui::TextDisabled("%s", T("También puedes arrastrar el archivo .nds a esta ventana."));
     if (aviso[0]) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1), "%s", aviso);
 

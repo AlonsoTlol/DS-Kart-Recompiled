@@ -13,6 +13,8 @@
 // El cartel de la repetición instantánea va en el título de la ventana (aquí no hay GDI para dibujar texto).
 #include "compat.h"
 #include <SDL2/SDL.h>
+#include <pthread.h>
+#include <time.h>
 #include <SDL2/SDL_opengl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,6 +50,51 @@ static CRITICAL_SECTION cs_marcos, cs_destino;
 
 static SDL_Window *ventana;
 static SDL_GLContext contexto;
+
+// macOS solo deja abrir ventanas y leer eventos en el hilo principal, y el juego va en otro (main_mkds.c, por la pila
+// de 256 MB). Ahí el hilo principal se queda en ventana_hilo_principal y hace lo que le pide el juego (en_principal).
+// En Linux también se puede probar con MKDS_HILO_PRINCIPAL=1.
+static pthread_mutex_t pp_m = PTHREAD_MUTEX_INITIALIZER, pp_llamada = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pp_pide = PTHREAD_COND_INITIALIZER, pp_hecho = PTHREAD_COND_INITIALIZER;
+static void (*volatile pp_pendiente)(void);
+static volatile int pp_usa, pp_video;
+
+void ventana_usa_hilo_principal(int si) { pp_usa = si; }
+
+static void en_principal(void (*f)(void)) {
+    if (!pp_usa) { f(); return; }
+    pthread_mutex_lock(&pp_llamada);  // de uno en uno
+    pthread_mutex_lock(&pp_m);
+    pp_pendiente = f;
+    pthread_cond_signal(&pp_pide);
+    while (pp_pendiente) pthread_cond_wait(&pp_hecho, &pp_m);
+    pthread_mutex_unlock(&pp_m);
+    pthread_mutex_unlock(&pp_llamada);
+}
+
+// No vuelve (el juego termina con exit). Mientras no hay nada que hacer, recoge los eventos del sistema cada pocos ms:
+// SDL a veces pide cosas al hilo principal desde otros hilos (al poner el contexto de OpenGL) y si no, esperarían.
+void ventana_hilo_principal(void) {
+    pthread_mutex_lock(&pp_m);
+    for (;;) {
+        if (!pp_pendiente) {
+            struct timespec t;
+            clock_gettime(CLOCK_REALTIME, &t);
+            t.tv_nsec += 4000000;
+            if (t.tv_nsec >= 1000000000) { t.tv_sec++; t.tv_nsec -= 1000000000; }
+            pthread_cond_timedwait(&pp_pide, &pp_m, &t);
+        }
+        void (*f)(void) = pp_pendiente;
+        pthread_mutex_unlock(&pp_m);
+        if (f) f();
+        else if (pp_video) SDL_PumpEvents();
+        pthread_mutex_lock(&pp_m);
+        if (f) {
+            pp_pendiente = NULL;
+            pthread_cond_broadcast(&pp_hecho);
+        }
+    }
+}
 static int oculto, pantalla_completa;
 static int dst_x, dst_y, dst_w = 256 * ESCALA, dst_h = 384 * ESCALA;  // dónde va la imagen (en puntos de la ventana)
 static uint16_t teclado_in = 0x3FF, teclado_xy = 3;
@@ -231,23 +278,36 @@ static SDL_Window *ventana3d;
 static SDL_GLContext contexto3d;
 int ventana_gl3d(void) { return contexto3d && !SDL_GL_MakeCurrent(ventana3d, contexto3d); }
 
+void apunta_fallo(const char *que);  // main_mkds.c: en fallos.txt
+
+static void falla_ventana(const char *que) {
+    char t[512];
+    snprintf(t, sizeof t, "[ventana] %s: %s", que, SDL_GetError());
+    fprintf(stderr, "%s\n", t);
+    apunta_fallo(t);
+    exit(1);
+}
+
+static void inicia_ventana(void);
 void ventana_inicia(void) {
     InitializeCriticalSection(&cs_marcos);
     InitializeCriticalSection(&cs_destino);
     if (getenv("MKDS_OCULTO")) { oculto = 1; return; }
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) {
-        fprintf(stderr, "[ventana] SDL: %s\n", SDL_GetError());
-        exit(1);
-    }
+    en_principal(inicia_ventana);
+}
+
+static void inicia_ventana(void) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) falla_ventana("SDL");
+    pp_video = 1;
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     disposicion = getenv("MKDS_DISPOSICION") ? atoi(getenv("MKDS_DISPOSICION")) : 0;
     if (disposicion < 0 || disposicion > 2) disposicion = 0;
     ventana = SDL_CreateWindow("DS Kart Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                ancho_ventana(), 384 * ESCALA,
                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    if (!ventana) { fprintf(stderr, "[ventana] no se pudo abrir: %s\n", SDL_GetError()); exit(1); }
+    if (!ventana) falla_ventana("no se pudo abrir");
     contexto = SDL_GL_CreateContext(ventana);
-    if (!contexto) { fprintf(stderr, "[ventana] sin OpenGL: %s\n", SDL_GetError()); exit(1); }
+    if (!contexto) falla_ventana("sin OpenGL");
     SDL_GL_MakeCurrent(ventana, NULL);  // lo usa el hilo del pintor
     // El 3D por la GPU (gpu3d_gl.c) va en su propio contexto, del hilo de pintar el 3D, pero la ventana se crea aquí: en
     // macOS solo se puede en el hilo principal
@@ -481,7 +541,10 @@ static void lee_mandos(uint16_t *in, uint16_t *xy, int *combo) {
     n_mandos = n;
 }
 
-void ventana_mensajes(void) {
+static void mensajes(void);
+void ventana_mensajes(void) { en_principal(mensajes); }
+
+static void mensajes(void) {
     uint16_t mando_in = 0x3FF, mando_xy = 3;
     int combo = 0;
     if (!oculto) {

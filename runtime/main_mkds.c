@@ -446,12 +446,24 @@ int main(void) { return arranca(); }  // la pila de 256 MB la pone el enlazador 
 __thread CompatFibra *compat_fibra_actual;  // la fibra en la que se está (compat.h)
 // En Linux la pila del hilo principal es de 8 MB: el juego va en un hilo con 256 MB, como en Windows
 static void *hilo_juego(void *p) { (void)p; exit(arranca()); }
+void ventana_usa_hilo_principal(int si);
+void ventana_hilo_principal(void);
 int main(void) {
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setstacksize(&a, 256u << 20);
     pthread_t h;
-    if (pthread_create(&h, &a, hilo_juego, NULL)) return arranca();
+#ifdef __APPLE__
+    int principal = 1;  // en macOS la ventana solo se puede abrir en el hilo principal (ventana_sdl.c)
+#else
+    int principal = getenv("MKDS_HILO_PRINCIPAL") && atoi(getenv("MKDS_HILO_PRINCIPAL"));
+#endif
+    ventana_usa_hilo_principal(principal);
+    if (pthread_create(&h, &a, hilo_juego, NULL)) {
+        ventana_usa_hilo_principal(0);
+        return arranca();
+    }
+    if (principal) ventana_hilo_principal();  // no vuelve
     pthread_join(h, NULL);
     return 0;
 }
