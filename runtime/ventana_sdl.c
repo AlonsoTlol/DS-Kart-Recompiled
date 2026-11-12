@@ -7,6 +7,7 @@
 //             F10 = guardar los últimos 30 segundos en vídeo (repeticiones/)   F1 = menú de ajustes
 // Mando: botón de abajo = A, derecha = B, arriba = X, izquierda = Y (por posición, como la DS), LB/LT = L,
 //        RB/RT = R, Start, Back/Create = Select, cruceta o stick izquierdo; L3 + R3 = menú de ajustes
+//        Los botones (no la cruceta) se pueden cambiar en el menú, F1 > Mandos (mando_botones, menu.cpp)
 //
 // Como en Windows, las imágenes se pintan en un hilo aparte (hilo_pinta) al ritmo del monitor, desde una cola de
 // NM imágenes con la hora a la que toca enseñar cada una (así caben las intermedias de MKDS_FPS).
@@ -526,17 +527,23 @@ static void lee_mandos(uint16_t *in, uint16_t *xy, int *combo) {
         int lx = SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_LEFTX);
         int ly = SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_LEFTY);
 #define B(b) SDL_GameControllerGetButton(m, SDL_CONTROLLER_BUTTON_##b)
-        struct { int pulsado, bit; } t[] = {
-            {B(A), 0}, {B(B), 1}, {B(BACK), 2}, {B(START), 3},
+        struct { int pulsado, bit; } t[] = {  // la cruceta
             {B(DPAD_RIGHT) || lx > zona, 4}, {B(DPAD_LEFT) || lx < -zona, 5},
             {B(DPAD_UP) || ly < -zona, 6}, {B(DPAD_DOWN) || ly > zona, 7},
-            {B(RIGHTSHOULDER) || SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 8000, 8},
-            {B(LEFTSHOULDER) || SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 8000, 9},
         };
-        for (int k = 0; k < 10; k++)
+        for (int k = 0; k < 4; k++)
             if (t[k].pulsado) *in &= (uint16_t)~(1u << t[k].bit);
-        if (B(Y)) *xy &= ~1;  // el de arriba: X de la DS
-        if (B(X)) *xy &= ~2;  // el de la izquierda: Y de la DS
+        struct { int pulsado, fisico; } f[] = {  // los botones, por posición (menu.h)
+            {B(A), MF_ABAJO}, {B(B), MF_DERECHA}, {B(X), MF_IZQUIERDA}, {B(Y), MF_ARRIBA},
+            {B(LEFTSHOULDER), MF_LB}, {B(RIGHTSHOULDER), MF_RB},
+            {SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 8000, MF_LT},
+            {SDL_GameControllerGetAxis(m, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 8000, MF_RT},
+            {B(BACK), MF_SELECT}, {B(START), MF_START},
+        };
+        unsigned fis = 0;
+        for (int k = 0; k < MF_N; k++)
+            if (f[k].pulsado) fis |= 1u << f[k].fisico;
+        mando_botones(fis, in, xy);
         if (B(LEFTSTICK) && B(RIGHTSTICK)) *combo = 1;  // L3 + R3: menú de ajustes
 #undef B
     }

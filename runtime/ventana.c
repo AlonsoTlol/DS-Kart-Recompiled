@@ -8,6 +8,7 @@
 //                 Back = Select, cruceta o stick izquierdo; L3 + R3 = menú de ajustes
 // Mando de PS5/PS4 (leído directamente por USB o Bluetooth): X = A, círculo = B,
 //                 cuadrado = Y, triángulo = X, L1/L2 = L, R1/R2 = R, Options = Start, Create = Select
+// Los botones (no la cruceta) se pueden cambiar en el menú, F1 > Mandos (mando_botones, menu.cpp)
 #include <windows.h>
 #include <xinput.h>
 #include <setupapi.h>
@@ -848,18 +849,22 @@ static void interpreta_ps(uint8_t lx, uint8_t ly, uint8_t b0, uint8_t b1) {
     int derecha = hat == 1 || hat == 2 || hat == 3 || lx > 192;
     int abajo = hat == 3 || hat == 4 || hat == 5 || ly > 192;
     int izquierda = hat == 5 || hat == 6 || hat == 7 || lx < 64;
-    if (b0 & 0x20) in &= ~1;          // cruz -> A
-    if (b0 & 0x40) in &= ~2;          // círculo -> B
-    if (b1 & 0x10) in &= ~4;          // Create -> Select
-    if (b1 & 0x20) in &= ~8;          // Options -> Start
+    unsigned f = 0;                   // botones por posición (menu.h), a los de la DS en mando_botones
+    if (b0 & 0x20) f |= 1u << MF_ABAJO;      // cruz
+    if (b0 & 0x40) f |= 1u << MF_DERECHA;    // círculo
+    if (b0 & 0x10) f |= 1u << MF_IZQUIERDA;  // cuadrado
+    if (b0 & 0x80) f |= 1u << MF_ARRIBA;     // triángulo
+    if (b1 & 0x01) f |= 1u << MF_LB;         // L1
+    if (b1 & 0x02) f |= 1u << MF_RB;         // R1
+    if (b1 & 0x04) f |= 1u << MF_LT;         // L2
+    if (b1 & 0x08) f |= 1u << MF_RT;         // R2
+    if (b1 & 0x10) f |= 1u << MF_SELECT;     // Create
+    if (b1 & 0x20) f |= 1u << MF_START;      // Options
     if (derecha) in &= ~0x10;
     if (izquierda) in &= ~0x20;
     if (arriba) in &= ~0x40;
     if (abajo) in &= ~0x80;
-    if (b1 & 0x0A) in &= ~0x100;      // R1 / R2 -> R
-    if (b1 & 0x05) in &= ~0x200;      // L1 / L2 -> L
-    if (b0 & 0x80) xy &= ~1;          // triángulo -> X
-    if (b0 & 0x10) xy &= ~2;          // cuadrado -> Y
+    mando_botones(f, &in, &xy);
     ps_in = in;
     ps_xy = xy;
     ps_combo = (b1 & 0xC0) == 0xC0;   // L3 + R3: menú de ajustes
@@ -903,18 +908,23 @@ static void lee_mando(uint16_t *in, uint16_t *xy, int *combo) {
         WORD b = st.Gamepad.wButtons;
         SHORT lx = st.Gamepad.sThumbLX, ly = st.Gamepad.sThumbLY;
         const SHORT zona = 12000;
-        struct { int pulsado, bit; } m[] = {
-            {b & XINPUT_GAMEPAD_A, 0}, {b & XINPUT_GAMEPAD_B, 1}, {b & XINPUT_GAMEPAD_BACK, 2},
-            {b & XINPUT_GAMEPAD_START, 3}, {(b & XINPUT_GAMEPAD_DPAD_RIGHT) || lx > zona, 4},
-            {(b & XINPUT_GAMEPAD_DPAD_LEFT) || lx < -zona, 5}, {(b & XINPUT_GAMEPAD_DPAD_UP) || ly > zona, 6},
-            {(b & XINPUT_GAMEPAD_DPAD_DOWN) || ly < -zona, 7},
-            {(b & XINPUT_GAMEPAD_RIGHT_SHOULDER) || st.Gamepad.bRightTrigger > 60, 8},
-            {(b & XINPUT_GAMEPAD_LEFT_SHOULDER) || st.Gamepad.bLeftTrigger > 60, 9},
+        struct { int pulsado, bit; } m[] = {  // la cruceta
+            {(b & XINPUT_GAMEPAD_DPAD_RIGHT) || lx > zona, 4}, {(b & XINPUT_GAMEPAD_DPAD_LEFT) || lx < -zona, 5},
+            {(b & XINPUT_GAMEPAD_DPAD_UP) || ly > zona, 6}, {(b & XINPUT_GAMEPAD_DPAD_DOWN) || ly < -zona, 7},
         };
-        for (int k = 0; k < 10; k++)
+        for (int k = 0; k < 4; k++)
             if (m[k].pulsado) *in &= (uint16_t)~(1u << m[k].bit);
-        if (b & XINPUT_GAMEPAD_Y) *xy &= ~1;  // por posición, como la DS (y como los de PlayStation): arriba = X
-        if (b & XINPUT_GAMEPAD_X) *xy &= ~2;  // izquierda = Y
+        struct { int pulsado, fisico; } f[] = {  // los botones, por posición (menu.h)
+            {b & XINPUT_GAMEPAD_A, MF_ABAJO}, {b & XINPUT_GAMEPAD_B, MF_DERECHA}, {b & XINPUT_GAMEPAD_X, MF_IZQUIERDA},
+            {b & XINPUT_GAMEPAD_Y, MF_ARRIBA}, {b & XINPUT_GAMEPAD_LEFT_SHOULDER, MF_LB},
+            {b & XINPUT_GAMEPAD_RIGHT_SHOULDER, MF_RB}, {st.Gamepad.bLeftTrigger > 60, MF_LT},
+            {st.Gamepad.bRightTrigger > 60, MF_RT}, {b & XINPUT_GAMEPAD_BACK, MF_SELECT},
+            {b & XINPUT_GAMEPAD_START, MF_START},
+        };
+        unsigned fis = 0;
+        for (int k = 0; k < MF_N; k++)
+            if (f[k].pulsado) fis |= 1u << f[k].fisico;
+        mando_botones(fis, in, xy);
         if ((b & XINPUT_GAMEPAD_LEFT_THUMB) && (b & XINPUT_GAMEPAD_RIGHT_THUMB)) *combo = 1;
     }
 }

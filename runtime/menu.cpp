@@ -79,6 +79,48 @@ extern "C" void menu_mando(unsigned short in) {
     antes = in;
 }
 
+// ---- botones del mando, cambiables (#23) ----------------------------------------------------------------------
+// Las ventanas dicen qué botones FÍSICOS se pulsan (por posición, igual en Xbox, PlayStation y SDL) y aquí se
+// traducen a botones de la DS según BOTONES_MANDO de ajustes.ini: diez nombres separados por comas, uno por botón
+// físico en este orden. La cruceta y el stick izquierdo no se cambian.
+static const char *const NOMBRE_DS[] = {"A", "B", "X", "Y", "L", "R", "START", "SELECT", "-"};
+enum { DS_A, DS_B, DS_X, DS_Y, DS_L, DS_R, DS_START, DS_SELECT, DS_NADA, N_DS };
+static const int MANDO_XBOX[MF_N] = {DS_A, DS_B, DS_Y, DS_X, DS_L, DS_R, DS_L, DS_R, DS_SELECT, DS_START};
+static const int MANDO_NINTENDO[MF_N] = {DS_B, DS_A, DS_Y, DS_X, DS_L, DS_R, DS_L, DS_R, DS_SELECT, DS_START};
+static volatile int botones_mando[MF_N] = {DS_A, DS_B, DS_Y, DS_X, DS_L, DS_R, DS_L, DS_R, DS_SELECT, DS_START};
+
+static void lee_botones_mando(void) {
+    static int leido;
+    if (leido) return;
+    leido = 1;
+    const char *e = getenv("MKDS_BOTONES_MANDO");
+    for (int f = 0; e && *e && f < MF_N; f++) {
+        size_t l = strcspn(e, ",");
+        for (int d = 0; d < N_DS; d++)
+            if (strlen(NOMBRE_DS[d]) == l && !strncmp(e, NOMBRE_DS[d], l)) botones_mando[f] = d;
+        e += l + (e[l] == ',');
+    }
+}
+
+extern "C" void mando_botones(unsigned fisicos, unsigned short *in, unsigned short *xy) {
+    lee_botones_mando();
+    // bit de cada botón de la DS: en KEYINPUT (in) o en EXTKEYIN (xy, solo X e Y)
+    static const int bit_in[N_DS] = {0, 1, -1, -1, 9, 8, 3, 2, -1};
+    for (int f = 0; f < MF_N; f++) {
+        if (!(fisicos & (1u << f))) continue;
+        int d = botones_mando[f];
+        if (bit_in[d] >= 0) *in &= (unsigned short)~(1u << bit_in[d]);
+        else if (d == DS_X) *xy &= (unsigned short)~1u;
+        else if (d == DS_Y) *xy &= (unsigned short)~2u;
+    }
+}
+
+static void texto_botones_mando(char *dst, size_t n) {
+    dst[0] = 0;
+    for (int f = 0; f < MF_N; f++)
+        snprintf(dst + strlen(dst), n - strlen(dst), "%s%s", f ? "," : "", NOMBRE_DS[botones_mando[f]]);
+}
+
 // ---- ajustes -----------------------------------------------------------------------------------------
 static struct {
     int fps;          // 60, 120, 180, 240
@@ -127,6 +169,7 @@ static void lee_ajustes(void) {
     texto("MKDS_LOCAL_IP", aj.ip, sizeof aj.ip, "");
     aj.gpu = entero("MKDS_GPU", 0);
     aj.suavizado = entero("MKDS_SUAVIZADO", 1);
+    lee_botones_mando();
     // Los textos van en el idioma del launcher; si no lo ha guardado (en Linux y macOS jugar.sh crea ajustes.ini
     // solo con IDIOMA), en el del juego
     static const char *por_juego[] = {"es", "en", "fr", "de", "it", "es"};
@@ -138,7 +181,8 @@ static void lee_ajustes(void) {
 static void guarda_ajustes(void) {
     char v[16][80];
     const char *claves[] = {"FPS", "ESCALA", "MOSTRAR_FPS", "VOLUMEN", "SILENCIO", "MICRO", "MICRO_GANANCIA",
-                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION", "SUAVIZADO"};
+                            "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION", "SUAVIZADO",
+                            "BOTONES_MANDO"};
     int n = (int)(sizeof claves / sizeof *claves);
     snprintf(v[0], 80, "%d", aj.fps); snprintf(v[1], 80, "%d", aj.escala); snprintf(v[2], 80, "%d", aj.mostrar_fps);
     snprintf(v[3], 80, "%d", aj.volumen); snprintf(v[4], 80, "%d", aj.silencio); snprintf(v[5], 80, "%d", aj.micro);
@@ -147,6 +191,7 @@ static void guarda_ajustes(void) {
     snprintf(v[11], 80, "%d", aj.gpu);
     snprintf(v[12], 80, "%d", ventana_disposicion());
     snprintf(v[13], 80, "%d", aj.suavizado);
+    texto_botones_mando(v[14], 80);
     static char lineas[128][256];
     int nl = 0, hecho[16] = {0};
     FILE *f = fopen("ajustes.ini", "r");
@@ -335,6 +380,21 @@ static const Texto textos[] = {
     {"Escribe el código de 6 letras que te pase el que creó la sala.", "Type the 6-letter code from whoever created the room.",
      "Tape le code de 6 lettres de celui qui a créé le salon.", "Gib den 6-stelligen Code von dem ein, der den Raum erstellt hat.",
      "Scrivi il codice di 6 lettere di chi ha creato la stanza."},
+    {"Botones del mando", "Controller buttons", "Boutons de la manette", "Controller-Tasten", "Tasti del controller"},
+    {"Como Xbox y PlayStation", "Xbox / PlayStation style", "Style Xbox / PlayStation", "Wie Xbox / PlayStation",
+     "Come Xbox / PlayStation"},
+    {"Como Nintendo", "Nintendo style", "Style Nintendo", "Wie Nintendo", "Come Nintendo"},
+    {"Como Nintendo: A a la derecha y B abajo, como en la DS. O elige qué botón de la DS hace cada botón del mando (el menú también lo usa: A acepta y B vuelve).",
+     "Nintendo style: A on the right and B at the bottom, like on the DS. Or choose which DS button each controller button presses (the menu uses it too: A accepts and B goes back).",
+     "Style Nintendo : A à droite et B en bas, comme sur la DS. Ou choisis quel bouton DS fait chaque bouton de la manette (le menu l'utilise aussi : A valide et B revient).",
+     "Wie Nintendo: A rechts und B unten, wie beim DS. Oder wähle, welche DS-Taste jede Controller-Taste drückt (das Menü nutzt es auch: A bestätigt, B geht zurück).",
+     "Come Nintendo: A a destra e B in basso, come sul DS. Oppure scegli quale tasto DS fa ogni tasto del controller (anche il menu lo usa: A conferma e B torna indietro)."},
+    {"Botón del mando", "Controller button", "Bouton de la manette", "Controller-Taste", "Tasto del controller"},
+    {"Nada", "Nothing", "Rien", "Nichts", "Niente"},
+    {"abajo", "bottom", "bas", "unten", "basso"},
+    {"derecha", "right", "droite", "rechts", "destra"},
+    {"izquierda", "left", "gauche", "links", "sinistra"},
+    {"arriba", "top", "haut", "oben", "alto"},
 };
 
 static const char *T(const char *es) {
@@ -585,27 +645,53 @@ static void pestaña_mandos(void) {
     int n = ventana_mandos(nombres, 8);
     if (!n) ayuda(T("Ningún mando conectado. Puedes jugar con el teclado."));
     for (int i = 0; i < n; i++) ImGui::BulletText("%s", nombres[i]);
-    ImGui::Spacing();
-    if (ImGui::BeginTable("botones", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+    titulo(T("Botones del mando"));
+    if (ImGui::Button(T("Como Xbox y PlayStation"))) { for (int f = 0; f < MF_N; f++) botones_mando[f] = MANDO_XBOX[f]; cambiado = 1; }
+    ImGui::SameLine();
+    if (ImGui::Button(T("Como Nintendo"))) { for (int f = 0; f < MF_N; f++) botones_mando[f] = MANDO_NINTENDO[f]; cambiado = 1; }
+    ayuda(T("Como Nintendo: A a la derecha y B abajo, como en la DS. O elige qué botón de la DS hace cada botón del mando (el menú también lo usa: A acepta y B vuelve)."));
+    if (ImGui::BeginTable("mando", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn(T("Botón del mando"));
         ImGui::TableSetupColumn(T("Botón de la DS"));
-        ImGui::TableSetupColumn(T("Mando"));
+        ImGui::TableHeadersRow();
+        char cara[4][96];  // Xbox · PlayStation (dónde está)
+        snprintf(cara[0], 96, "A · %s (%s)", T("Cruz"), T("abajo"));
+        snprintf(cara[1], 96, "B · %s (%s)", T("Círculo"), T("derecha"));
+        snprintf(cara[2], 96, "X · %s (%s)", T("Cuadrado"), T("izquierda"));
+        snprintf(cara[3], 96, "Y · %s (%s)", T("Triángulo"), T("arriba"));
+        const char *nombre[MF_N] = {cara[0], cara[1], cara[2], cara[3], "LB / L1", "RB / R1", "LT / L2", "RT / R2",
+                                    "Back / Create", "Start / Options"};
+        const char *ds[N_DS] = {"A", "B", "X", "Y", "L", "R", "Start", "Select", T("Nada")};
+        for (int f = 0; f < MF_N; f++) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(nombre[f]);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushID(f);
+            ImGui::SetNextItemWidth(-1);
+            int d = botones_mando[f];
+            if (ImGui::Combo("##ds", &d, ds, N_DS)) { botones_mando[f] = d; cambiado = 1; }
+            ImGui::PopID();
+        }
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextWrapped("%s", T("cruceta o stick izquierdo"));
+        ImGui::TableSetColumnIndex(1); ImGui::TextWrapped("%s", T("Cruceta"));
+        ImGui::EndTable();
+    }
+    titulo(T("Teclado"));
+    if (ImGui::BeginTable("teclado", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn(T("Botón de la DS"));
         ImGui::TableSetupColumn(T("Teclado"));
         ImGui::TableHeadersRow();
-        char a[64], b[64], x[64], y[64];  // Xbox / PlayStation (por posición: el de arriba es la X de la DS)
-        snprintf(a, sizeof a, "A / %s", T("Cruz"));
-        snprintf(b, sizeof b, "B / %s", T("Círculo"));
-        snprintf(x, sizeof x, "Y / %s", T("Triángulo"));
-        snprintf(y, sizeof y, "X / %s", T("Cuadrado"));
-        const char *filas[][3] = {
-            {"A", a, "X"}, {"B", b, "Z"}, {"X", x, "S"}, {"Y", y, "A"},
-            {"L", "LB · LT / L1 · L2", "Q"}, {"R", "RB · RT / R1 · R2", "W"},
-            {"Start", "Start / Options", "Enter"}, {"Select", "Back / Create", T("Retroceso")},
-            {T("Cruceta"), T("cruceta o stick izquierdo"), T("flechas")},
-            {T("Lápiz"), "—", T("ratón en la pantalla de abajo")},
+        const char *filas[][2] = {
+            {"A", "X"}, {"B", "Z"}, {"X", "S"}, {"Y", "A"}, {"L", "Q"}, {"R", "W"},
+            {"Start", "Enter"}, {"Select", T("Retroceso")}, {T("Cruceta"), T("flechas")},
+            {T("Lápiz"), T("ratón en la pantalla de abajo")},
         };
         for (unsigned i = 0; i < sizeof filas / sizeof *filas; i++) {
             ImGui::TableNextRow();
-            for (int k = 0; k < 3; k++) { ImGui::TableSetColumnIndex(k); ImGui::TextWrapped("%s", filas[i][k]); }
+            for (int k = 0; k < 2; k++) { ImGui::TableSetColumnIndex(k); ImGui::TextWrapped("%s", filas[i][k]); }
         }
         ImGui::EndTable();
     }

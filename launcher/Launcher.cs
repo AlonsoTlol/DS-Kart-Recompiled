@@ -1198,6 +1198,8 @@ partial class Launcher {
           </Border>
           <TextBlock Text='En la Batalla de globos, sopla al micrófono o pulsa Select para inflar un globo.'
                      Style='{StaticResource Nota}'/>
+          <TextBlock Text='Los botones del mando se cambian dentro del juego: F1 (o L3 + R3) &gt; Mandos. Hay uno para ponerlos como en Nintendo.'
+                     Style='{StaticResource Nota}'/>
         </StackPanel>
 
         <!-- Acerca de -->

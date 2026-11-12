@@ -116,6 +116,11 @@ static class Textos {
           "En Bataille de ballons, souffle dans le micro ou appuie sur Select pour gonfler un ballon.",
           "Im Ballonkampf ins Mikrofon pusten oder Select drücken, um einen Ballon aufzublasen.",
           "Nella Battaglia palloncini, soffia nel microfono o premi Select per gonfiare un palloncino.");
+        A("Los botones del mando se cambian dentro del juego: F1 (o L3 + R3) > Mandos. Hay uno para ponerlos como en Nintendo.",
+          "You can change the controller buttons in the game: F1 (or L3 + R3) > Controllers. There's one to set them like on Nintendo.",
+          "Les boutons de la manette se changent dans le jeu : F1 (ou L3 + R3) > Manettes. Il y en a un pour les mettre comme chez Nintendo.",
+          "Die Controller-Tasten änderst du im Spiel: F1 (oder L3 + R3) > Controller. Ein Knopf stellt sie wie bei Nintendo ein.",
+          "I tasti del controller si cambiano nel gioco: F1 (o L3 + R3) > Controller. Ce n'è uno per metterli come su Nintendo.");
         A("Hasta 10 letras. Es el nombre que sale en las carreras y se guarda en tu partida.",
           "Up to 10 letters. It's the name shown in races and saved in your save file.",
           "Jusqu'à 10 lettres. C'est le nom affiché pendant les courses et enregistré dans ta sauvegarde.",

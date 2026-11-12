@@ -30,6 +30,11 @@ void menu_rueda(float dy);
 // el mando mientras el menú está abierto: botones de la DS (bits a 0 = pulsado, como KEYINPUT)
 void menu_mando(unsigned short in);
 
+// Botones del mando que se pueden cambiar en el menú (#23), por posición: las ventanas pasan los pulsados
+// (1 << MF_...) y se quitan de in (KEYINPUT) y xy (EXTKEYIN) los bits de la DS que les toquen. Desde cualquier hilo.
+enum { MF_ABAJO, MF_DERECHA, MF_IZQUIERDA, MF_ARRIBA, MF_LB, MF_RB, MF_LT, MF_RT, MF_SELECT, MF_START, MF_N };
+void mando_botones(unsigned fisicos, unsigned short *in, unsigned short *xy);
+
 int menu_inicia(void);  // en el hilo de OpenGL, con el contexto ya hecho; 0 si no se puede
 void menu_pinta(int ancho, int alto, int ancho_px, int alto_px);  // ventana en puntos y en píxeles
 
