@@ -480,9 +480,20 @@ extern "C" int main(int argc, char **argv) {
     (void)argc; (void)argv;
     lee_ajustes();
     const char *id = ajuste("LAUNCHER_IDIOMA", NULL);
+    int guardado = id != NULL;
     if (!id) id = getenv("LANG");
+    int visto = 0;
     for (int i = 0; id && i < 5; i++)
-        if (!strncmp(id, idiomas[i], 2)) idioma = i;
+        if (!strncmp(id, idiomas[i], 2)) { idioma = i; visto = 1; }
+    if (!guardado) {
+        // La primera vez (jugar.sh crea ajustes.ini solo con IDIOMA): el idioma del sistema, o si no es uno de los 5,
+        // el del juego. Se guardan los dos para que el juego y sus textos (el menú F1, la sala) vayan igual.
+        if (!visto)
+            for (int i = 0; i < 5; i++)
+                if (idioma_juego[i] == atoi(ajuste("IDIOMA", "5"))) idioma = i;
+        pon_ajuste("LAUNCHER_IDIOMA", idiomas[idioma]);
+        pon_ajuste_n("IDIOMA", idioma_juego[idioma]);
+    }
     snprintf(nombre, sizeof nombre, "%s", ajuste("NOMBRE", ""));
     if (!strcmp(nombre, "Jugador")) nombre[0] = 0;  // el que deja jugar.sh la primera vez
 

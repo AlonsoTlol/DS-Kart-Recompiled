@@ -127,7 +127,11 @@ static void lee_ajustes(void) {
     texto("MKDS_LOCAL_IP", aj.ip, sizeof aj.ip, "");
     aj.gpu = entero("MKDS_GPU", 0);
     aj.suavizado = entero("MKDS_SUAVIZADO", 1);
-    texto("MKDS_LAUNCHER_IDIOMA", idioma_menu, sizeof idioma_menu, "es");
+    // Los textos van en el idioma del launcher; si no lo ha guardado (en Linux y macOS jugar.sh crea ajustes.ini
+    // solo con IDIOMA), en el del juego
+    static const char *por_juego[] = {"es", "en", "fr", "de", "it", "es"};
+    texto("MKDS_LAUNCHER_IDIOMA", idioma_menu, sizeof idioma_menu,
+          por_juego[aj.idioma >= 1 && aj.idioma <= 5 ? aj.idioma : 5]);
 }
 
 // ajustes.ini: se cambian las claves del menú y se deja todo lo demás (lo del launcher) como estaba

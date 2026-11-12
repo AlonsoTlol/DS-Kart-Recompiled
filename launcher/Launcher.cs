@@ -222,7 +222,7 @@ partial class Launcher {
         Busca<FrameworkElement>("Bienvenida").Visibility = Visibility.Collapsed;
         foreach (string c in codigos) Busca<ToggleButton>("Lan_" + c).IsChecked = c == codigo;
         Traduce((DependencyObject)ventana.Content);
-        Busca<TextBlock>("Version").Text = T("versión de prueba") + VERSION;
+        Busca<TextBlock>("Version").Text = T("versión") + VERSION;
         Resumen();
         EstadoRom();
         Estado(T("Listo para jugar"), false);
@@ -238,7 +238,7 @@ partial class Launcher {
         }
         foreach (string c in codigos) Busca<ToggleButton>("Lan_" + c).IsChecked = c == codigo;
         Traduce((DependencyObject)ventana.Content);
-        Busca<TextBlock>("Version").Text = T("versión de prueba") + VERSION;
+        Busca<TextBlock>("Version").Text = T("versión") + VERSION;
         Resumen();
         EstadoRom();
         Estado(T("Listo para jugar"), false);
@@ -247,7 +247,7 @@ partial class Launcher {
 
     static void Prepara() {
         ventana.Title = TITULO;
-        Busca<TextBlock>("Version").Text = T("versión de prueba") + VERSION;
+        Busca<TextBlock>("Version").Text = T("versión") + VERSION;
 
         // navegación: cada botón de la barra enseña su página
         foreach (string p in paginas) {

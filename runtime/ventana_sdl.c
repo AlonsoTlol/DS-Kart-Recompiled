@@ -393,7 +393,8 @@ uint32_t *ventana_reserva_intermedia(void) {
     return video_escala() > 1 ? m->hd : m->baja;
 }
 void ventana_publica_intermedia(int64_t ts) {
-    if (oculto) { guarda_intermedia(); return; }
+    guarda_intermedia();  // pruebas (MKDS_CAPTURA_TODO): también con ventana
+    if (oculto) return;
     publica(ts);
 }
 
@@ -411,9 +412,10 @@ void ventana_muestra_en(const uint32_t *arriba, const uint32_t *abajo, int64_t t
         memcpy(m->hd + n, video_hd(1), n * 4);
     }
     ultimo = m;
+    guarda_intermedia();  // pruebas (MKDS_CAPTURA_TODO): también con ventana
     publica(ts ? ts : reloj());
     graba_portada(m->hd, m->baja, e);
-    if (oculto) { guarda_intermedia(); return; }
+    if (oculto) return;
     repe_frame(arriba, abajo);
 }
 

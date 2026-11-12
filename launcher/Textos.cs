@@ -32,7 +32,7 @@ static class Textos {
         A("Ajustes", "Settings", "Paramètres", "Einstellungen", "Impostazioni");
         A("Controles", "Controls", "Commandes", "Steuerung", "Comandi");
         A("Acerca de", "About", "À propos", "Info", "Informazioni");
-        A("versión de prueba", "test version", "version de test", "Testversion", "versione di prova");
+        A("versión", "version", "version", "Version", "versione");
         A("PORT NATIVO PARA PC", "NATIVE PC PORT", "PORTAGE PC NATIF", "NATIVER PC-PORT", "PORT NATIVO PER PC");
         A("JUGAR", "PLAY", "JOUER", "SPIELEN", "GIOCA");
         A("Repeticiones", "Replays", "Rediffusions", "Wiederholungen", "Replay");
