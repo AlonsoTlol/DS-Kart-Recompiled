@@ -16,7 +16,7 @@ OPC="-O2 -w -Iruntime -Iruntime/imgui -D_GNU_SOURCE -fno-exceptions -fno-rtti -f
 SDL="$(sdl2-config --cflags)"
 [ -n "$MAC" ] && SDL="$SDL -I$(sdl2-config --prefix)/include"
 hecho=
-for f in launcher/lanzador.cpp runtime/imgui/imgui.cpp runtime/imgui/imgui_draw.cpp runtime/imgui/imgui_tables.cpp \
+for f in launcher/lanzador.cpp launcher/portada.c runtime/imgui/imgui.cpp runtime/imgui/imgui_draw.cpp runtime/imgui/imgui_tables.cpp \
          runtime/imgui/imgui_widgets.cpp runtime/imgui/imgui_impl_opengl2.cpp; do
     o=build/lanzador_obj/$(basename "$f" .cpp).o
     if [ ! -f "$o" ] || [ "$f" -nt "$o" ]; then

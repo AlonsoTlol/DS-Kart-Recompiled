@@ -233,7 +233,7 @@ void sonido_inicia(void) {
     quiero.freq = FREC;
     quiero.format = AUDIO_S16SYS;
     quiero.channels = 2;
-    quiero.samples = MUESTRAS;
+    quiero.samples = MUESTRAS * 2;  // 31 ms: con 512 se oían chasquidos en macOS (vídeo del 12/11)
     quiero.callback = pide_sonido;
     SDL_AudioDeviceID d = SDL_OpenAudioDevice(NULL, 0, &quiero, &tengo, 0);  // SDL convierte si hace falta
     if (!d) { fprintf(stderr, "[sonido] no se pudo abrir la salida de audio: %s\n", SDL_GetError()); return; }

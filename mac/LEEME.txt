@@ -33,8 +33,10 @@ screen beside it, 16:9, 2 big top screen with the small touch screen on top of i
 
 Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Backspace = Select, mouse = stylus on the bottom screen,
-F11 = fullscreen (fn+F11 on some keyboards), F1 = settings menu.
-Xbox, PlayStation and generic controllers work through SDL.
+Cmd + , (or fn + F1) = settings menu, Cmd + Ctrl + F (or Alt + Enter, or fn + F11) = fullscreen.
+On the Mac the F keys are brightness, volume... unless you hold fn.
+Controllers (Xbox, PlayStation, Switch Pro and others SDL knows): D-pad or left stick; you can change what each
+button does in the settings menu > Controllers (there's a Nintendo-style button).
 
 Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
 
@@ -72,7 +74,11 @@ arriba grande y la táctil pequeña superpuesta).
 
 Controles: flechas = cruceta, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Retroceso = Select, ratón = lápiz en la pantalla de abajo,
-F11 = pantalla completa (fn+F11 en algunos teclados), F1 = menú de ajustes.
-Mandos de Xbox, PlayStation y genéricos: funcionan con SDL.
+Cmd + , (o fn + F1) = menú de ajustes, Cmd + Ctrl + F (o Alt + Enter, o fn + F11)
+= pantalla completa. En el Mac las teclas F son de brillo, volumen... si no
+mantienes fn.
+Mandos (Xbox, PlayStation, Switch Pro y los que conozca SDL): cruceta o stick
+izquierdo; lo que hace cada botón se cambia en el menú de ajustes > Mandos (hay
+un botón para ponerlos como en Nintendo).
 
 Issues: https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues

@@ -39,7 +39,8 @@ comun $D
 mkdir -p $D/linux
 cp linux/preparar.sh linux/jugar.sh linux/lanzador.sh linux/actualiza.py linux/logo.bmp linux/LEEME.txt $D/linux/
 mkdir -p $D/launcher
-cp launcher/lanzador.cpp $D/launcher/
+cp launcher/lanzador.cpp launcher/portada.c launcher/pl_mpeg.h $D/launcher/
+cp portada.mpg $D/  # el vídeo del launcher (portada.mp4 pasado a MPEG-1)
 echo "$V" > $D/linux/version.txt
 cp linux/LEEME.txt $D/README.txt
 empaqueta Linux
@@ -48,7 +49,8 @@ comun $D
 mkdir -p $D/linux $D/mac
 cp linux/preparar.sh linux/jugar.sh linux/lanzador.sh linux/actualiza.py linux/logo.bmp $D/linux/  # lo mismo que en Linux
 mkdir -p $D/launcher
-cp launcher/lanzador.cpp $D/launcher/
+cp launcher/lanzador.cpp launcher/portada.c launcher/pl_mpeg.h $D/launcher/
+cp portada.mpg $D/
 echo "$V" > $D/linux/version.txt
 cp mac/jugar.command mac/LEEME.txt $D/mac/
 cp mac/LEEME.txt $D/README.txt

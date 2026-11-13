@@ -17,6 +17,13 @@
 
 enum { SALIDA_ACTUALIZADO = 42, SALIDA_SIN_VENTANA = 43 };
 
+// launcher/portada.c: el vídeo de fondo (portada.mpg), como el portada.mp4 del launcher de Windows
+extern "C" {
+int portada_abre(const char *ruta, int *w, int *h);
+const uint8_t *portada_avanza(double dt);
+void portada_cierra(void);
+}
+
 // ---- ajustes.ini: se cambian las claves de aquí y se deja todo lo demás como estaba ----------------------------------
 #define MAX_LINEAS 128
 static char lineas[MAX_LINEAS][256];
@@ -237,6 +244,41 @@ static void abre_dialogo(void) {
 static SDL_Window *ventana;
 static GLuint tex_logo;
 static int logo_w, logo_h;
+static GLuint tex_portada;  // 0 si no hay portada.mpg: se queda el fondo liso
+static int portada_w, portada_h;
+
+static void carga_portada(void) {
+    if (!portada_abre("portada.mpg", &portada_w, &portada_h)) return;
+    glGenTextures(1, &tex_portada);
+    glBindTexture(GL_TEXTURE_2D, tex_portada);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, portada_w, portada_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+}
+
+static void avanza_portada(double dt) {
+    if (!tex_portada) return;
+    const uint8_t *px = portada_avanza(dt);
+    if (!px) return;
+    glBindTexture(GL_TEXTURE_2D, tex_portada);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, portada_w, portada_h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+}
+
+// La banda de arriba de Inicio: el vídeo a todo el ancho, recortado arriba y abajo (como UniformToFill en Windows) y
+// fundido con el fondo por abajo. Devuelve su alto (0 si no hay vídeo)
+static float pinta_portada(float an) {
+    if (!tex_portada || an <= 0) return 0;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float h = an * 0.36f;
+    float visible = (h / an) / ((float)portada_h / (float)portada_w);  // qué parte del alto del vídeo cabe
+    if (visible > 1) visible = 1;
+    float v0 = (1 - visible) / 2;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    dl->AddImage((ImTextureID)(intptr_t)tex_portada, p, ImVec2(p.x + an, p.y + h), ImVec2(0, v0), ImVec2(1, v0 + visible));
+    ImU32 fondo = ImGui::GetColorU32(ImGuiCol_WindowBg), nada = fondo & 0x00FFFFFFu;
+    dl->AddRectFilledMultiColor(ImVec2(p.x, p.y + h * 0.4f), ImVec2(p.x + an, p.y + h), nada, nada, fondo, fondo);
+    return h;
+}
 
 static void carga_logo(void) {
     SDL_Surface *s = SDL_LoadBMP("linux/logo.bmp");
@@ -341,6 +383,8 @@ static void juega(void) {
 
 static void pagina_inicio(void) {
     float an = ImGui::GetContentRegionAvail().x;
+    float y0 = ImGui::GetCursorPosY(), banda = pinta_portada(an);
+    if (banda > 0) ImGui::SetCursorPosY(y0 + banda * 0.62f);  // el logo, encima de la parte de abajo del vídeo
     if (tex_logo) {
         float w = 340, h = w * (float)logo_h / (float)(logo_w ? logo_w : 1);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (an - w) / 2);
@@ -514,6 +558,7 @@ extern "C" int main(int argc, char **argv) {
     carga_letra();
     ImGui_ImplOpenGL2_Init();
     carga_logo();
+    carga_portada();
     lanza(&mira, "python3 linux/actualiza.py mira 2>/dev/null");
 
     Uint64 antes = SDL_GetPerformanceCounter();
@@ -548,6 +593,7 @@ extern "C" int main(int argc, char **argv) {
         io.DeltaTime = (float)((double)(ahora - antes) / (double)SDL_GetPerformanceFrequency());
         if (io.DeltaTime <= 0) io.DeltaTime = 1.0f / 60;
         antes = ahora;
+        if (pagina == 0) avanza_portada(io.DeltaTime);
         io.DisplaySize = ImVec2((float)w, (float)h);
         io.DisplayFramebufferScale = ImVec2(w ? (float)fw / (float)w : 1, h ? (float)fh / (float)h : 1);
         ImGui_ImplOpenGL2_NewFrame();
@@ -578,6 +624,7 @@ extern "C" int main(int argc, char **argv) {
         // mientras no se hace nada, sin gastar CPU
         if (!prepara.activo && !instala.activo) SDL_Delay(8);
     }
+    portada_cierra();
     ImGui_ImplOpenGL2_Shutdown();
     ImGui::DestroyContext();
     SDL_GL_DeleteContext(ctx);

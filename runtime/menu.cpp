@@ -243,9 +243,9 @@ static const Texto textos[] = {
     {"Audio", "Audio", "Audio", "Audio", "Audio"},
     {"Juego", "Game", "Jeu", "Spiel", "Gioco"},
     {"Pantalla completa", "Fullscreen", "Plein écran", "Vollbild", "Schermo intero"},
-    {"Las dos pantallas lado a lado. También con F11.", "Both screens side by side. Also with F11.",
-     "Les deux écrans côte à côte. Aussi avec F11.", "Beide Bildschirme nebeneinander. Auch mit F11.",
-     "I due schermi affiancati. Anche con F11."},
+    {"Las dos pantallas lado a lado. También con F11 o Alt + Enter.", "Both screens side by side. Also with F11 or Alt + Enter.",
+     "Les deux écrans côte à côte. Aussi avec F11 ou Alt + Entrée.", "Beide Bildschirme nebeneinander. Auch mit F11 oder Alt + Enter.",
+     "I due schermi affiancati. Anche con F11 o Alt + Invio."},
     {"Imágenes por segundo", "Frames per second", "Images par seconde", "Bilder pro Sekunde", "Fotogrammi al secondo"},
     {"El juego va a 60; por encima se pintan imágenes intermedias del 3D. Si el PC no llega, pinta las que puede.",
      "The game runs at 60; above that, in-between 3D frames are drawn. If the PC can't keep up, it draws what it can.",
@@ -587,7 +587,7 @@ static void pestaña_graficos(void) {
     int pc = ventana_pantalla_completa();
     bool b = pc != 0;
     if (ImGui::Checkbox(T("Pantalla completa"), &b)) ventana_pide_pantalla_completa(b);
-    ayuda(T("Las dos pantallas lado a lado. También con F11."));
+    ayuda(T("Las dos pantallas lado a lado. También con F11 o Alt + Enter."));
     titulo(T("Pantallas"));
     int d = ventana_disposicion();
     if (ImGui::RadioButton(T("Las dos iguales"), d == 0)) { ventana_pon_disposicion(0); cambiado = 1; }

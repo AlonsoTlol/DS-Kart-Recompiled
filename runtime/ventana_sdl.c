@@ -298,6 +298,9 @@ void ventana_inicia(void) {
 }
 
 static void inicia_ventana(void) {
+    // El mando también sin el foco: en macOS la ventana, abierta desde el launcher o la Terminal, a veces no lo
+    // recibe, y SDL no hacía caso al mando hasta pinchar en ella (vídeo de macOS del 12/11)
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) falla_ventana("SDL");
     pp_video = 1;
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -307,6 +310,7 @@ static void inicia_ventana(void) {
                                ancho_ventana(), 384 * ESCALA,
                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!ventana) falla_ventana("no se pudo abrir");
+    SDL_RaiseWindow(ventana);  // delante y con el foco, para que el teclado vaya sin pinchar en ella
     contexto = SDL_GL_CreateContext(ventana);
     if (!contexto) falla_ventana("sin OpenGL");
     SDL_GL_MakeCurrent(ventana, NULL);  // lo usa el hilo del pintor
@@ -564,9 +568,18 @@ static void mensajes(void) {
             case SDL_QUIT: ExitProcess(0);
             case SDL_KEYDOWN:
                 if (e.key.keysym.sym == SDLK_F1) { if (!e.key.repeat) menu_alterna(); break; }
+                // En el Mac las teclas F son de brillo, volumen... (y F11 enseña el escritorio): Cmd + , abre el menú
+                // de ajustes, como en las aplicaciones del Mac; Cmd + Ctrl + F o Alt + Enter, la pantalla completa.
+                // Con keysym.mod (las teclas que había al pulsar): con SDL_GetModState se perdía la primera pulsación
+                if (e.key.keysym.sym == SDLK_COMMA && (e.key.keysym.mod & KMOD_GUI)) {
+                    if (!e.key.repeat) menu_alterna();
+                    break;
+                }
                 if (menu) { if (tecla_menu(e.key.keysym.sym)) menu_tecla(tecla_menu(e.key.keysym.sym), 1); break; }
                 if (e.key.repeat) break;
-                if (e.key.keysym.sym == SDLK_F11 || (e.key.keysym.sym == SDLK_ESCAPE && pantalla_completa))
+                if (e.key.keysym.sym == SDLK_F11 || (e.key.keysym.sym == SDLK_ESCAPE && pantalla_completa) ||
+                    (e.key.keysym.sym == SDLK_f && (e.key.keysym.mod & KMOD_GUI) && (e.key.keysym.mod & KMOD_CTRL)) ||
+                    (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))
                     cambia_pantalla_completa();
                 else if (e.key.keysym.sym == SDLK_F10) repe_guarda();
                 else tecla(e.key.keysym.sym, 1);

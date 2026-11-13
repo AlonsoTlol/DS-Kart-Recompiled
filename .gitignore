@@ -24,6 +24,7 @@ faltan.txt.antes
 ajustes.ini
 # Vídeo de la portada: grabado del juego del propio usuario (es de Nintendo: nunca al repositorio)
 portada.mp4
+portada.mpg
 herramientas/
 actualizacion/
 publicar/*.zip

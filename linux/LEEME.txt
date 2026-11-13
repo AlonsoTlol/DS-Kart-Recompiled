@@ -38,8 +38,9 @@ screen beside it, 16:9, 2 big top screen with the small touch screen on top of i
 
 Controls: arrows = D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Backspace = Select, mouse = stylus on the bottom screen,
-F11 = fullscreen, F10 = save replay (needs ffmpeg).
-Xbox, PlayStation and generic controllers work through SDL.
+F1 = settings menu, F11 (or Alt + Enter) = fullscreen, F10 = save replay (needs ffmpeg).
+Controllers (Xbox, PlayStation, Switch Pro and others SDL knows): D-pad or left stick; you can change what each
+button does in the settings menu > Controllers (there's a Nintendo-style button).
 
 If something fails, open an issue on GitHub with what the terminal says:
 https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
@@ -85,9 +86,11 @@ arriba grande y la táctil pequeña superpuesta).
 
 Controles: flechas = cruceta, X = A, Z = B, S = X, A = Y, Q = L, W = R,
 Enter = Start, Retroceso = Select, ratón = lápiz en la pantalla de abajo,
-F11 = pantalla completa, F10 = guardar repetición (necesita ffmpeg).
-Mandos de Xbox, PlayStation y genéricos: deberían funcionar solos (por favor,
-dinos si el tuyo funciona).
+F1 = menú de ajustes, F11 (o Alt + Enter) = pantalla completa, F10 = guardar
+repetición (necesita ffmpeg).
+Mandos (Xbox, PlayStation, Switch Pro y los que conozca SDL): cruceta o stick
+izquierdo; lo que hace cada botón se cambia en el menú de ajustes > Mandos (hay
+un botón para ponerlos como en Nintendo). Si el tuyo no va, dínoslo.
 
 Si algo falla, abre un issue en GitHub con lo que salga en la terminal:
 https://github.com/AlonsoTlol/DS-Kart-Recompiled/issues
