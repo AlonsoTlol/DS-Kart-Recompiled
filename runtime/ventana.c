@@ -878,14 +878,17 @@ static DWORD WINAPI hilo_mando_ps(LPVOID p) {
         if (!h) { Sleep(2000); continue; }
         HIDD_ATTRIBUTES at = {sizeof at};
         ps_producto = HidD_GetAttributes(h, &at) ? at.ProductID : 1;
+        // el DualShock 4 por USB también manda el informe 0x01 de 64 bytes, pero con los botones en [5] y [6]
+        // (en [8] y [9] van L2 y R2): leído como un DualSense, la cruceta se quedaba "arriba" (issue #25)
+        int ds4 = ps_producto == 0x05C4 || ps_producto == 0x09CC;
         uint8_t buf[128];
         DWORD n;
         while (ReadFile(h, buf, sizeof buf, &n, NULL)) {
             if (buf[0] == 0x31 && n >= 12) {            // DualSense por Bluetooth (informe completo)
                 interpreta_ps(buf[2], buf[3], buf[9], buf[10]);
-            } else if (buf[0] == 0x01 && n >= 40) {     // DualSense por USB
+            } else if (buf[0] == 0x01 && n >= 40 && !ds4) {  // DualSense por USB
                 interpreta_ps(buf[1], buf[2], buf[8], buf[9]);
-            } else if (buf[0] == 0x01 && n >= 9) {      // DualShock 4, o informe simple por Bluetooth
+            } else if (buf[0] == 0x01 && n >= 9) {      // DualShock 4 (USB o Bluetooth), o informe simple por Bluetooth
                 interpreta_ps(buf[1], buf[2], buf[5], buf[6]);
             } else if (buf[0] == 0x11 && n >= 12) {     // DualShock 4 por Bluetooth
                 interpreta_ps(buf[3], buf[4], buf[7], buf[8]);
