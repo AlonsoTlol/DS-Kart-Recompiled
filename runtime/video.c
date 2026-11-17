@@ -38,13 +38,17 @@ static void mapea(uint8_t **tabla, int n, uint32_t off, uint8_t *mem, uint32_t t
     }
 }
 
+// Las tablas se montan aparte y se copian al final: el 3D se pinta en otros hilos y lee g_tex y g_texpal mientras
+// tanto. Antes se ponían a cero y se volvían a rellenar, y si el juego cambiaba cualquier banco (VRAMCNT) a mitad
+// de una escena, el 3D leía en ese momento texels y paletas a 0: puntos negros sueltos, sobre todo a escala 4
+// (issue #26, la arena de la Playa Cheep Cheep)
 static void recalcula(void) {
-    memset(bg_a, 0, sizeof bg_a); memset(obj_a, 0, sizeof obj_a);
-    memset(bg_b, 0, sizeof bg_b); memset(obj_b, 0, sizeof obj_b);
-    memset(lcdc, 0, sizeof lcdc);
-    memset(ext_bg_a, 0, sizeof ext_bg_a); memset(ext_bg_b, 0, sizeof ext_bg_b);
-    ext_obj_a = ext_obj_b = NULL;
-    memset(g_tex, 0, sizeof g_tex); memset(g_texpal, 0, sizeof g_texpal);
+    struct {
+        uint8_t *bg_a[32], *obj_a[16], *bg_b[8], *obj_b[8], *lcdc[41];
+        uint8_t *ext_bg_a[4], *ext_obj_a, *ext_bg_b[4], *ext_obj_b;
+        uint8_t *g_tex[4], *g_texpal[6];
+    } n;
+    memset(&n, 0, sizeof n);
     static const uint32_t lcdc_off[9] = {0, 0x20000, 0x40000, 0x60000, 0x80000, 0x90000, 0x94000, 0x98000, 0xA0000};
     for (int b = 0; b < 9; b++) {
         uint8_t v = vramcnt[b];
@@ -52,56 +56,62 @@ static void recalcula(void) {
         int mst = v & 7, ofs = (v >> 3) & 3;
         uint8_t *m = banco[b];
         uint32_t t = tam_banco[b];
-        if (mst == 0) { mapea(lcdc, 41, lcdc_off[b], m, t); continue; }
+        if (mst == 0) { mapea(n.lcdc, 41, lcdc_off[b], m, t); continue; }
         switch (b) {
         case 0: case 1:  // A, B
             switch (mst & 3) {
-            case 1: mapea(bg_a, 32, ofs * 0x20000, m, t); break;
-            case 2: mapea(obj_a, 16, (ofs & 1) * 0x20000, m, t); break;
-            case 3: g_tex[ofs] = m; break;
+            case 1: mapea(n.bg_a, 32, ofs * 0x20000, m, t); break;
+            case 2: mapea(n.obj_a, 16, (ofs & 1) * 0x20000, m, t); break;
+            case 3: n.g_tex[ofs] = m; break;
             }
             break;
         case 2: case 3:  // C, D
             switch (mst) {
-            case 1: mapea(bg_a, 32, ofs * 0x20000, m, t); break;
-            case 3: g_tex[ofs] = m; break;
-            case 4: if (b == 2) mapea(bg_b, 8, 0, m, t); else mapea(obj_b, 8, 0, m, t); break;
+            case 1: mapea(n.bg_a, 32, ofs * 0x20000, m, t); break;
+            case 3: n.g_tex[ofs] = m; break;
+            case 4: if (b == 2) mapea(n.bg_b, 8, 0, m, t); else mapea(n.obj_b, 8, 0, m, t); break;
             }  // mst 2: VRAM del ARM7 (va aparte)
             break;
         case 4:  // E
             switch (mst) {
-            case 1: mapea(bg_a, 32, 0, m, t); break;
-            case 2: mapea(obj_a, 16, 0, m, t); break;
-            case 3: for (int k = 0; k < 4; k++) g_texpal[k] = m + k * 0x4000; break;
-            case 4: for (int k = 0; k < 4; k++) ext_bg_a[k] = m + k * 0x2000; break;
+            case 1: mapea(n.bg_a, 32, 0, m, t); break;
+            case 2: mapea(n.obj_a, 16, 0, m, t); break;
+            case 3: for (int k = 0; k < 4; k++) n.g_texpal[k] = m + k * 0x4000; break;
+            case 4: for (int k = 0; k < 4; k++) n.ext_bg_a[k] = m + k * 0x2000; break;
             }
             break;
         case 5: case 6: {  // F, G
             uint32_t off = 0x4000 * (ofs & 1) + 0x10000 * (ofs >> 1);
             switch (mst) {
-            case 1: mapea(bg_a, 32, off, m, t); break;
-            case 2: mapea(obj_a, 16, off, m, t); break;
-            case 3: g_texpal[(ofs & 1) + (ofs >> 1) * 4] = m; break;
-            case 4: ext_bg_a[(ofs & 1) * 2] = m; ext_bg_a[(ofs & 1) * 2 + 1] = m + 0x2000; break;
-            case 5: ext_obj_a = m; break;
+            case 1: mapea(n.bg_a, 32, off, m, t); break;
+            case 2: mapea(n.obj_a, 16, off, m, t); break;
+            case 3: n.g_texpal[(ofs & 1) + (ofs >> 1) * 4] = m; break;
+            case 4: n.ext_bg_a[(ofs & 1) * 2] = m; n.ext_bg_a[(ofs & 1) * 2 + 1] = m + 0x2000; break;
+            case 5: n.ext_obj_a = m; break;
             }
             break;
         }
         case 7:  // H
             switch (mst & 3) {
-            case 1: mapea(bg_b, 8, 0, m, t); break;
-            case 2: for (int k = 0; k < 4; k++) ext_bg_b[k] = m + k * 0x2000; break;
+            case 1: mapea(n.bg_b, 8, 0, m, t); break;
+            case 2: for (int k = 0; k < 4; k++) n.ext_bg_b[k] = m + k * 0x2000; break;
             }
             break;
         case 8:  // I
             switch (mst & 3) {
-            case 1: mapea(bg_b, 8, 0x8000, m, t); break;
-            case 2: mapea(obj_b, 8, 0, m, t); break;
-            case 3: ext_obj_b = m; break;
+            case 1: mapea(n.bg_b, 8, 0x8000, m, t); break;
+            case 2: mapea(n.obj_b, 8, 0, m, t); break;
+            case 3: n.ext_obj_b = m; break;
             }
             break;
         }
     }
+    memcpy(bg_a, n.bg_a, sizeof bg_a); memcpy(obj_a, n.obj_a, sizeof obj_a);
+    memcpy(bg_b, n.bg_b, sizeof bg_b); memcpy(obj_b, n.obj_b, sizeof obj_b);
+    memcpy(lcdc, n.lcdc, sizeof lcdc);
+    memcpy(ext_bg_a, n.ext_bg_a, sizeof ext_bg_a); memcpy(ext_bg_b, n.ext_bg_b, sizeof ext_bg_b);
+    ext_obj_a = n.ext_obj_a; ext_obj_b = n.ext_obj_b;
+    memcpy(g_tex, n.g_tex, sizeof g_tex); memcpy(g_texpal, n.g_texpal, sizeof g_texpal);
 }
 
 void video_vramcnt(int b, uint8_t v) {

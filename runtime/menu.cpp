@@ -280,9 +280,9 @@ static const Texto textos[] = {
      "L'écran du haut sur toute la hauteur et l'écran tactile en petit juste à sa droite, sans le couvrir : ensemble, ils remplissent un écran 16:9.",
      "Der obere Bildschirm in voller Höhe und der Touchscreen klein direkt rechts daneben, ohne ihn zu verdecken: Zusammen füllen sie einen 16:9-Bildschirm.",
      "Lo schermo superiore a tutta altezza e il touch piccolo subito alla sua destra, senza coprirlo: insieme riempiono uno schermo 16:9."},
-    {"3D con la tarjeta gráfica (experimental)", "3D on the graphics card (experimental)",
-     "3D sur la carte graphique (expérimental)", "3D auf der Grafikkarte (experimentell)",
-     "3D sulla scheda grafica (sperimentale)"},
+    {"3D con la tarjeta gráfica", "3D on the graphics card",
+     "3D sur la carte graphique", "3D auf der Grafikkarte",
+     "3D sulla scheda grafica"},
     {"Suavizar bordes", "Smooth edges", "Lisser les bords", "Kanten glätten", "Smussa i bordi"},
     {"Antialiasing, como en la DS. Si te bajan los FPS, quítalo.", "Antialiasing, like on the DS. If your FPS drop, turn it off.",
      "Anticrénelage, comme sur la DS. Si vos FPS baissent, désactivez-le.",
@@ -618,7 +618,7 @@ static void pestaña_graficos(void) {
     ayuda(T("Se aplica al volver a abrir el juego."));
     ImGui::Spacing();
     bool gpu = aj.gpu != 0;
-    if (ImGui::Checkbox(T("3D con la tarjeta gráfica (experimental)"), &gpu)) {
+    if (ImGui::Checkbox(T("3D con la tarjeta gráfica"), &gpu)) {
         aj.gpu = gpu;
         gx_pon_gpu(aj.gpu);  // al momento
         cambiado = 1;

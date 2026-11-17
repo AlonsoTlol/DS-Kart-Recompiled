@@ -1,4 +1,4 @@
-// 3D por la GPU (experimental). Pinta la misma lista de polígonos que el rasterizador
+// 3D por la GPU. Pinta la misma lista de polígonos que el rasterizador
 // de gpu3d.c (ya recortados, en pantalla y sin los que no miran a la cámara) con OpenGL 2.1, en un contexto propio
 // y oculto del hilo de pintar, y lee la imagen a los mismos búferes (RGB555 y alfa 0..31). Así todo lo demás (el
 // 2D, la captura, las repeticiones, las imágenes intermedias) sigue igual. Si algo falla al empezar (sin OpenGL 2,

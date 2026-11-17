@@ -100,8 +100,8 @@ static const struct { const char *t[5]; } textos[] = {
     {{"Resolución del 3D", "3D resolution", "Résolution 3D", "3D-Auflösung", "Risoluzione 3D"}},
     {{"Imágenes por segundo", "Frames per second", "Images par seconde", "Bilder pro Sekunde", "Fotogrammi al secondo"}},
     {{"Pantalla completa", "Full screen", "Plein écran", "Vollbild", "Schermo intero"}},
-    {{"3D con la tarjeta gráfica (experimental)", "3D on the graphics card (experimental)",
-      "3D sur la carte graphique (expérimental)", "3D auf der Grafikkarte (experimentell)", "3D sulla scheda grafica (sperimentale)"}},
+    {{"3D con la tarjeta gráfica", "3D on the graphics card",
+      "3D sur la carte graphique", "3D auf der Grafikkarte", "3D sulla scheda grafica"}},
     {{"Micrófono (para soplar)", "Microphone (for blowing)", "Microphone (pour souffler)", "Mikrofon (zum Pusten)", "Microfono (per soffiare)"}},
     {{"Actualizar a la %s", "Update to %s", "Mettre à jour vers %s", "Auf %s aktualisieren", "Aggiorna a %s"}},
     {{"Hay una versión nueva: %s", "There is a new version: %s", "Nouvelle version : %s", "Neue Version: %s", "Nuova versione: %s"}},
@@ -493,7 +493,7 @@ static void pagina_ajustes(void) {
     bool b = atoi(ajuste("PANTALLA_COMPLETA", "0")) != 0;
     if (ImGui::Checkbox(T("Pantalla completa"), &b)) pon_ajuste_n("PANTALLA_COMPLETA", b);
     b = atoi(ajuste("GPU", "0")) != 0;
-    if (ImGui::Checkbox(T("3D con la tarjeta gráfica (experimental)"), &b)) pon_ajuste_n("GPU", b);
+    if (ImGui::Checkbox(T("3D con la tarjeta gráfica"), &b)) pon_ajuste_n("GPU", b);
     b = atoi(ajuste("MICRO", "1")) != 0;
     if (ImGui::Checkbox(T("Micrófono (para soplar)"), &b)) pon_ajuste_n("MICRO", b);
 }

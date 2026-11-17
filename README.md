@@ -23,7 +23,7 @@ Because it runs natively, it can go beyond the original:
 - **3D at 2×, 3× or 4× resolution** — menus and HUD stay pixel-perfect like on the DS
 - **Up to 240 fps** — in-between 3D frames are generated while the game logic stays at 60
 - **Full screen with both screens side by side**, or the top screen big with the touch screen small beside it (16:9)
-- **3D on the graphics card (experimental)** — same image, much less CPU
+- **3D on the graphics card** — same image, much less CPU
 - **PS5, PS4 and Xbox controllers**, and your **PC microphone** for Balloon Battle
 - **Instant replays** — F10 saves the last 30 seconds as a video
 - **In-game settings menu** (F1 or L3 + R3): graphics, controllers, audio, name, language, FPS counter
@@ -130,7 +130,7 @@ Como funciona de forma nativa, puede ir más allá del original:
 - **3D a 2×, 3× o 4× de resolución**: los menús y el marcador se ven como en la DS, sin difuminar
 - **Hasta 240 imágenes por segundo**: se inventan imágenes intermedias del 3D mientras el juego sigue a 60
 - **Pantalla completa con las dos pantallas lado a lado**, o la de arriba grande con la táctil pequeña al lado (16:9)
-- **3D con la tarjeta gráfica (experimental)**: la misma imagen gastando mucha menos CPU
+- **3D con la tarjeta gráfica**: la misma imagen gastando mucha menos CPU
 - **Mandos de PS5, PS4 y Xbox**, y el **micrófono del PC** para la Batalla de globos
 - **Repeticiones instantáneas**: F10 guarda los últimos 30 segundos en vídeo
 - **Menú de ajustes dentro del juego** (F1 o L3 + R3): gráficos, mandos, audio, nombre, idioma, contador de FPS
