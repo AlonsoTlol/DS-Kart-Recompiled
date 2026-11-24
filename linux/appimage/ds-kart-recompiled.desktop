@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DS Kart Recompiled
+Comment=Mario Kart DS for PC, no emulator (needs your own ROM)
+Exec=AppRun
+Icon=ds-kart-recompiled
+Categories=Game;
+Terminal=false

@@ -74,4 +74,5 @@ fi
 if [ -n "$MAC" ]; then GL="-framework OpenGL"; else GL="-lGL"; fi
 clang -o build/mkds build/obj/*/*.o $(sdl2-config --libs) $GL -lpthread -lm
 rm -rf generado extraido   # ya compilado: cientos de MB que no hacen falta
+[ -n "$DSKART_APPDIR" ] && rm -rf build/zig   # AppImage: lo que Zig guarda por su cuenta (otro tanto)
 echo "Listo: sh linux/jugar.sh"

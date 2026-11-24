@@ -1,0 +1,16 @@
+#!/bin/sh
+# DS Kart Recompiled en AppImage (issue #28): todo dentro (Python, compilador y SDL2), sin instalar nada.
+# El juego se prepara desde la ROM de cada uno y vive, con la partida y los ajustes, en ~/.local/share/ds-kart-recompiled
+# (o en DSKART_DATOS). Aquí solo se copia el código cuando cambia la versión; lo demás es linux/jugar.sh de siempre.
+AQUI="$(dirname "$(readlink -f "$0")")"
+DATOS="${DSKART_DATOS:-${XDG_DATA_HOME:-$HOME/.local/share}/ds-kart-recompiled}"
+mkdir -p "$DATOS" && cd "$DATOS" || { echo "No se puede escribir en $DATOS (can't write there)"; exit 1; }
+DE="$AQUI/usr/share/dskart"
+if [ "$(cat .appimage 2>/dev/null)" != "$(cat "$DE/.id")" ]; then
+    rm -rf .appimage tools runtime linux launcher lib
+    cp -R "$DE/." . && chmod -R u+w tools runtime linux lib || { echo "No se pudo copiar (could not copy) -> $DATOS"; exit 1; }
+    mv .id .appimage
+fi
+export DSKART_APPDIR="$AQUI"
+export ZIG_GLOBAL_CACHE_DIR="$DATOS/build/zig" ZIG_LOCAL_CACHE_DIR="$DATOS/build/zig"
+PATH="$AQUI/usr/herramientas:$PATH" exec sh linux/jugar.sh "$@"

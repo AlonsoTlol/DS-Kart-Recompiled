@@ -245,6 +245,7 @@ static void *carga(const char *ruta, size_t *n) {
 // (empieza por "NKSY") y el nombre va detrás, en UTF-16, hasta 10 letras. El juego lo copia del firmware al
 // crear la partida; la del usuario se creó con el nombre vacío y el juego no deja cambiarlo. Se escribe en
 // cada fotograma si no coincide; al guardar, el juego lo deja ya en la partida.
+void discord_inicia(void);  // discord.c
 static int nombre_listo;
 void nombre_cambia(void) { nombre_listo = 0; }  // el menú ha cambiado MKDS_NOMBRE
 
@@ -428,6 +429,7 @@ static int arranca(void) {
         fprintf(stderr, "[mkds] todo desbloqueado\n");
     }
     CreateThread(NULL, 0, vigilante, NULL, 0, NULL);
+    discord_inicia();
 #ifdef _WIN32
     AddVectoredExceptionHandler(1, al_romperse);
 #else

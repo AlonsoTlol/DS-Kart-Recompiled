@@ -34,3 +34,4 @@ Launcher.old.exe
 servidor/.wrangler/
 servidor/node_modules/
 wfc_perfil.txt
+publicar/*.AppImage

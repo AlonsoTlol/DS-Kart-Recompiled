@@ -26,6 +26,7 @@ Because it runs natively, it can go beyond the original:
 - **3D on the graphics card** — same image, much less CPU
 - **PS5, PS4 and Xbox controllers**, and your **PC microphone** for Balloon Battle
 - **Instant replays** — F10 saves the last 30 seconds as a video
+- **Discord Rich Presence** — game mode, and the track, lap and position if you want (launcher settings)
 - **In-game settings menu** (F1 or L3 + R3): graphics, controllers, audio, name, language, FPS counter
 - **Its own launcher** in English, Spanish, French, German and Italian
 - **Everything unlocked** from the start
@@ -50,9 +51,14 @@ generated on your PC from your own cartridge.
 
 If Windows SmartScreen warns you, click "More info" › "Run anyway" (the launcher isn't signed).
 
-### Linux (beta)
+### Linux and Steam Deck (beta)
 
-Download `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` opens the launcher, where you choose your ROM and
+**AppImage, nothing to install:** download `DS-Kart-Recompiled-vX.Y.Z-x86_64.AppImage`, allow it to run as a program
+(Properties › Permissions) and open it. Choose your ROM in Settings and press PLAY; the first time it builds the game.
+Your save and settings are in `~/.local/share/ds-kart-recompiled`. On a Steam Deck, do the first setup in Desktop Mode
+(not tested on a real one yet: tell us how it goes).
+
+**Zip, with your distribution's tools:** download `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` opens the launcher, where you choose your ROM and
 your settings. Without a window, `sh linux/jugar.sh --terminal` prepares the game and starts it (settings in `ajustes.ini`).
 
 1. Install the tools (once): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),
@@ -133,6 +139,7 @@ Como funciona de forma nativa, puede ir más allá del original:
 - **3D con la tarjeta gráfica**: la misma imagen gastando mucha menos CPU
 - **Mandos de PS5, PS4 y Xbox**, y el **micrófono del PC** para la Batalla de globos
 - **Repeticiones instantáneas**: F10 guarda los últimos 30 segundos en vídeo
+- **Rich Presence de Discord**: modo de juego y, si quieres, circuito, vuelta y posición (ajustes del launcher)
 - **Menú de ajustes dentro del juego** (F1 o L3 + R3): gráficos, mandos, audio, nombre, idioma, contador de FPS
 - **Launcher propio** en español, inglés, francés, alemán e italiano
 - **Todo desbloqueado** de serie
@@ -158,9 +165,14 @@ PC a partir de tu propio cartucho.
 
 Si Windows SmartScreen avisa, pulsa "Más información" › "Ejecutar de todas formas" (el launcher no está firmado).
 
-### Linux (beta)
+### Linux y Steam Deck (beta)
 
-Descarga `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` abre el launcher, donde eliges la ROM y los
+**AppImage, sin instalar nada:** descarga `DS-Kart-Recompiled-vX.Y.Z-x86_64.AppImage`, dale permiso para ejecutarse como
+programa (Propiedades › Permisos) y ábrelo. Elige tu ROM en Ajustes y dale a JUGAR; la primera vez genera el juego.
+La partida y los ajustes están en `~/.local/share/ds-kart-recompiled`. En una Steam Deck, la primera vez hazlo en el modo
+Escritorio (aún sin probar en una de verdad: ¡cuéntanos!).
+
+**Zip, con las herramientas de tu distribución:** descarga `DS-Kart-Recompiled-Linux-vX.Y.Z.zip`. `sh linux/jugar.sh` abre el launcher, donde eliges la ROM y los
 ajustes. Sin ventana, `sh linux/jugar.sh --terminal` prepara el juego y lo abre (ajustes en `ajustes.ini`).
 
 1. Instala las herramientas (una vez): `sudo apt install python3 clang libsdl2-dev` (Ubuntu/Debian/Mint),

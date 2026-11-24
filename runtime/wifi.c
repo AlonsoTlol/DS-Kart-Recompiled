@@ -1164,6 +1164,10 @@ static void responde_simple(int api, int error) {
 static void pon_estado(int s) {
     if (estado) pon16(estado, (uint16_t)s);
 }
+int wifi_en_que(void) {  // para Discord: 1 en un grupo del multijugador local, 2 en la Conexión Wi-Fi, 0 nada
+    int s = estado ? lee16(estado) : 0;
+    return s == PARENT || s == CHILD || s == MP_PARENT || s == MP_CHILD ? 1 : s == DCF_CHILD ? 2 : 0;
+}
 
 // Una orden del ARM9 (la dirección de su búfer). Devuelve 1 si la ha hecho el port.
 int wifi_orden(uint32_t dir) {

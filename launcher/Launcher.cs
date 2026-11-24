@@ -109,6 +109,7 @@ partial class Launcher {
         ajustes["IDIOMA"] = "5";  // como el firmware de la DS: 1 inglés, 2 francés, 3 alemán, 4 italiano, 5 español
         ajustes["FPS"] = FpsSegunMonitor();
         ajustes["MICRO"] = "1";   // micrófono del PC para soplar (Batalla de globos)
+        foreach (string k in discord) ajustes[k] = "1";  // Rich Presence de Discord: encendido y con todo
         ajustes["MICRO_DISPOSITIVO"] = "";  // cuál (nombre de Windows); vacío = el predeterminado  // imágenes por segundo: 60 (como la DS), 120, 180 o 240 (con intermedias)
         if (!File.Exists(RutaAjustes())) return;
         foreach (string l in File.ReadAllLines(RutaAjustes(), Encoding.UTF8)) {
@@ -306,6 +307,18 @@ partial class Launcher {
         pc.IsChecked = ajustes["PANTALLA_COMPLETA"] == "1";
         pc.Click += delegate { ajustes["PANTALLA_COMPLETA"] = pc.IsChecked == true ? "1" : "0"; Resumen(); };
 
+        // Rich Presence de Discord: el interruptor y qué se ve además del modo (que sale siempre)
+        foreach (string k in discord) {
+            string clave = k;
+            var b = Busca<ToggleButton>(clave);
+            b.Click += delegate {
+                ajustes[clave] = b.IsChecked == true ? "1" : "0";
+                PonDiscord();
+                GuardaAjustes();
+            };
+        }
+        PonDiscord();
+
         var nombre = Busca<TextBox>("Nombre");
         nombre.Text = ajustes["NOMBRE"];
         nombre.TextChanged += delegate { ajustes["NOMBRE"] = nombre.Text.Replace("=", "").Trim(); Resumen(); };
@@ -469,10 +482,21 @@ partial class Launcher {
         Busca<TextBlock>("ChipNombre").Text = n.Length > 0 ? n : T("Sin nombre");
     }
 
+    // las claves de ajustes.ini y los nombres de sus botones
+    static readonly string[] discord = { "DISCORD", "DISCORD_CIRCUITO", "DISCORD_VUELTA", "DISCORD_POSICION" };
+
+    static void PonDiscord() {
+        foreach (string k in discord) Busca<ToggleButton>(k).IsChecked = ajustes[k] != "0";
+        var que = Busca<FrameworkElement>("DiscordQue");
+        que.IsEnabled = ajustes["DISCORD"] != "0";
+        que.Opacity = que.IsEnabled ? 1 : 0.4;
+    }
+
     // El juego tiene su propio menú de ajustes (F1) que también escribe ajustes.ini: al cerrarlo, se vuelve a
     // leer para que el launcher enseñe lo mismo y no lo pise al guardar
     static void RecargaAjustes() {
         LeeAjustes();
+        PonDiscord();
         for (int i = 1; i <= 4; i++) Busca<ToggleButton>("Esc" + i).IsChecked = ajustes["ESCALA"] == i.ToString();
         for (int i = 1; i <= 5; i++) Busca<ToggleButton>("Idi" + i).IsChecked = ajustes["IDIOMA"] == i.ToString();
         foreach (string f in new[] { "60", "120", "180", "240" }) Busca<ToggleButton>("Fps" + f).IsChecked = ajustes["FPS"] == f;
@@ -1112,6 +1136,23 @@ partial class Launcher {
                            Style='{StaticResource Nota}'/>
               </StackPanel>
             </DockPanel>
+          </Border>
+          <Border Style='{StaticResource Tarjeta}'>
+            <StackPanel>
+              <DockPanel>
+                <ToggleButton x:Name='DISCORD' DockPanel.Dock='Right' Style='{StaticResource Interruptor}'/>
+                <StackPanel Margin='0,0,20,0'>
+                  <TextBlock Text='Rich Presence de Discord' Style='{StaticResource Etiqueta}'/>
+                  <TextBlock Text='Con Discord abierto, en tu perfil sale a qué juegas. El modo de juego se ve siempre; lo demás lo eliges tú.'
+                             Style='{StaticResource Nota}'/>
+                </StackPanel>
+              </DockPanel>
+              <UniformGrid x:Name='DiscordQue' Columns='3' Margin='-4,14,-4,0'>
+                <ToggleButton x:Name='DISCORD_CIRCUITO' Style='{StaticResource Seg}' Content='Circuito'/>
+                <ToggleButton x:Name='DISCORD_VUELTA' Style='{StaticResource Seg}' Content='Vuelta'/>
+                <ToggleButton x:Name='DISCORD_POSICION' Style='{StaticResource Seg}' Content='Posición'/>
+              </UniformGrid>
+            </StackPanel>
           </Border>
           <Border Style='{StaticResource Tarjeta}'>
             <StackPanel>

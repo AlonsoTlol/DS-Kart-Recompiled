@@ -28,6 +28,8 @@ int online_estado(char *codigo, int *jugadores); // wifi.c: la sala del online (
 void sonido_pon_volumen(int volumen, int silencio);  // sonido.c
 void mic_pon(int activo, int ganancia);          // microfono.c
 void nombre_cambia(void);                        // main_mkds.c: vuelve a leer MKDS_NOMBRE
+void discord_pon(int si);                        // discord.c: enseñar en Discord a qué se juega
+void discord_ver(int circuito, int vuelta, int posicion);  // y qué, además del modo
 }
 
 // ---- cola de lo que llega del hilo de la ventana ------------------------------------------------------
@@ -135,6 +137,8 @@ static struct {
     char ip[64];      // la del amigo (Radmin), para el multijugador
     int gpu;          // 3D por la GPU (gpu3d_gl.c)
     int suavizado;    // antialiasing con la GPU
+    int discord;      // enseñar en Discord a qué se juega
+    int discord_ver[3];  // además del modo: circuito, vuelta y posición
 } aj;
 static char idioma_menu[4] = "es";
 static int pestaña_pedida = -1, pestaña_actual;
@@ -169,6 +173,10 @@ static void lee_ajustes(void) {
     texto("MKDS_LOCAL_IP", aj.ip, sizeof aj.ip, "");
     aj.gpu = entero("MKDS_GPU", 0);
     aj.suavizado = entero("MKDS_SUAVIZADO", 1);
+    aj.discord = entero("MKDS_DISCORD", 1);
+    aj.discord_ver[0] = entero("MKDS_DISCORD_CIRCUITO", 1);
+    aj.discord_ver[1] = entero("MKDS_DISCORD_VUELTA", 1);
+    aj.discord_ver[2] = entero("MKDS_DISCORD_POSICION", 1);
     lee_botones_mando();
     // Los textos van en el idioma del launcher; si no lo ha guardado (en Linux y macOS jugar.sh crea ajustes.ini
     // solo con IDIOMA), en el del juego
@@ -179,10 +187,10 @@ static void lee_ajustes(void) {
 
 // ajustes.ini: se cambian las claves del menú y se deja todo lo demás (lo del launcher) como estaba
 static void guarda_ajustes(void) {
-    char v[16][80];
+    char v[19][80];
     const char *claves[] = {"FPS", "ESCALA", "MOSTRAR_FPS", "VOLUMEN", "SILENCIO", "MICRO", "MICRO_GANANCIA",
                             "NOMBRE", "IDIOMA", "LOCAL_IP", "PANTALLA_COMPLETA", "GPU", "DISPOSICION", "SUAVIZADO",
-                            "BOTONES_MANDO"};
+                            "BOTONES_MANDO", "DISCORD", "DISCORD_CIRCUITO", "DISCORD_VUELTA", "DISCORD_POSICION"};
     int n = (int)(sizeof claves / sizeof *claves);
     snprintf(v[0], 80, "%d", aj.fps); snprintf(v[1], 80, "%d", aj.escala); snprintf(v[2], 80, "%d", aj.mostrar_fps);
     snprintf(v[3], 80, "%d", aj.volumen); snprintf(v[4], 80, "%d", aj.silencio); snprintf(v[5], 80, "%d", aj.micro);
@@ -192,8 +200,10 @@ static void guarda_ajustes(void) {
     snprintf(v[12], 80, "%d", ventana_disposicion());
     snprintf(v[13], 80, "%d", aj.suavizado);
     texto_botones_mando(v[14], 80);
+    snprintf(v[15], 80, "%d", aj.discord);
+    for (int i = 0; i < 3; i++) snprintf(v[16 + i], 80, "%d", aj.discord_ver[i]);
     static char lineas[128][256];
-    int nl = 0, hecho[16] = {0};
+    int nl = 0, hecho[19] = {0};
     FILE *f = fopen("ajustes.ini", "r");
     if (f) {
         while (nl < 128 && fgets(lineas[nl], 256, f)) {
@@ -254,6 +264,16 @@ static const Texto textos[] = {
      "Il gioco va a 60; sopra si disegnano fotogrammi 3D intermedi. Se il PC non ce la fa, ne disegna meno."},
     {"Resolución del 3D", "3D resolution", "Résolution 3D", "3D-Auflösung", "Risoluzione 3D"},
     {"Original", "Original", "Originale", "Original", "Originale"},
+    {"Mostrar en Discord a qué juegas", "Show what you're playing on Discord",
+     "Afficher à quoi tu joues sur Discord", "In Discord anzeigen, was du spielst", "Mostra su Discord a cosa giochi"},
+    {"En tu perfil de Discord, si lo tienes abierto. El modo de juego sale siempre.",
+     "On your Discord profile, if it's open. The game mode is always shown.",
+     "Sur ton profil Discord, s'il est ouvert. Le mode de jeu est toujours affiché.",
+     "In deinem Discord-Profil, wenn es geöffnet ist. Der Spielmodus wird immer angezeigt.",
+     "Sul tuo profilo Discord, se è aperto. La modalità di gioco si vede sempre."},
+    {"Circuito", "Track", "Circuit", "Strecke", "Circuito"},
+    {"Vuelta", "Lap", "Tour", "Runde", "Giro"},
+    {"Posición", "Position", "Place", "Platz", "Posizione"},
     {"Se aplica al volver a abrir el juego.", "Applied the next time you open the game.",
      "Appliqué à la prochaine ouverture du jeu.", "Wird beim nächsten Spielstart übernommen.",
      "Si applica alla prossima apertura del gioco."},
@@ -729,6 +749,22 @@ static void pestaña_juego(void) {
     ImGui::SetNextItemWidth(-1);
     if (ImGui::Combo("##idioma", &i, idiomas, 5)) { aj.idioma = i + 1; cambiado = 1; }
     ayuda(T("Se aplica al volver a abrir el juego."));
+    titulo("Discord");
+    bool d = aj.discord != 0;
+    if (ImGui::Checkbox(T("Mostrar en Discord a qué juegas"), &d)) { aj.discord = d; discord_pon(d); cambiado = 1; }
+    static const char *ver[] = {"Circuito", "Vuelta", "Posición"};
+    ImGui::BeginDisabled(!d);
+    for (int k = 0; k < 3; k++) {
+        if (k) ImGui::SameLine(0, 24);
+        bool b = aj.discord_ver[k] != 0;
+        if (ImGui::Checkbox(T(ver[k]), &b)) {
+            aj.discord_ver[k] = b;
+            discord_ver(aj.discord_ver[0], aj.discord_ver[1], aj.discord_ver[2]);
+            cambiado = 1;
+        }
+    }
+    ImGui::EndDisabled();
+    ayuda(T("En tu perfil de Discord, si lo tienes abierto. El modo de juego sale siempre."));
     titulo(T("Multijugador: IP de tu amigo"));
     ImGui::SetNextItemWidth(-1);
     if (ImGui::InputText("##ip", aj.ip, sizeof aj.ip, ImGuiInputTextFlags_CharsNoBlank)) aplica();

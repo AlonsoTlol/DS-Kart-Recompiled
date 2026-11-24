@@ -9,13 +9,9 @@ The game is NOT included: you need a dump of your own cartridge.
      Ubuntu / Debian / Mint:   sudo apt install python3 clang libsdl2-dev
      Arch / Manjaro:           sudo pacman -S python clang sdl2
      Fedora:                   sudo dnf install python3 clang SDL2-devel
-     Steam Deck (SteamOS): the system is read-only, so use a container. In Desktop
-     Mode, open Konsole in this folder and run (distrobox comes with SteamOS 3.5+):
-       distrobox create -i ubuntu:24.04 -n mkds
-       distrobox enter mkds
-       sudo apt install python3 clang libsdl2-dev
-     then do steps 2 and 3 inside that same terminal ("distrobox enter mkds" the
-     next times). Not tested on a Steam Deck yet: tell us how it goes!
+     Steam Deck (SteamOS), or if you don't want to install anything: use the
+     AppImage instead of this zip (DS-Kart-Recompiled-vX.Y.Z-x86_64.AppImage, on the
+     same download page). It has everything inside.
 
 2. Open a terminal in this folder and run:
      sh linux/jugar.sh
@@ -56,14 +52,9 @@ El juego NO viene incluido: necesitas una copia de tu propio cartucho.
      Ubuntu / Debian / Mint:  sudo apt install python3 clang libsdl2-dev
      Arch / Manjaro:           sudo pacman -S python clang sdl2
      Fedora:                  sudo dnf install python3 clang SDL2-devel
-     Steam Deck (SteamOS): el sistema es de solo lectura, así que se usa un
-     contenedor. En el modo Escritorio, abre Konsole en esta carpeta y escribe
-     (distrobox viene con SteamOS 3.5 o superior):
-       distrobox create -i ubuntu:24.04 -n mkds
-       distrobox enter mkds
-       sudo apt install python3 clang libsdl2-dev
-     y haz los pasos 2 y 3 en esa misma terminal (las siguientes veces, primero
-     "distrobox enter mkds"). Aún no probado en una Steam Deck: ¡cuéntanos!
+     Steam Deck (SteamOS), o si no quieres instalar nada: usa el AppImage en vez de
+     este zip (DS-Kart-Recompiled-vX.Y.Z-x86_64.AppImage, en la misma página de
+     descargas). Lo lleva todo dentro.
 
 2. Abre una terminal en esta carpeta y escribe:
      sh linux/jugar.sh

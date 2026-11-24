@@ -44,6 +44,15 @@ static class Textos {
         A("Escribe el código de 6 letras que te pase el que creó la sala.", "Enter the 6-letter code from whoever created the room.",
           "Saisis le code à 6 lettres de celui qui a créé le salon.", "Gib den 6-stelligen Code des Raumerstellers ein.",
           "Scrivi il codice di 6 lettere di chi ha creato la stanza.");
+        A("Rich Presence de Discord", "Discord Rich Presence", "Rich Presence Discord", "Discord Rich Presence", "Rich Presence di Discord");
+        A("Con Discord abierto, en tu perfil sale a qué juegas. El modo de juego se ve siempre; lo demás lo eliges tú.",
+          "With Discord open, your profile shows what you're playing. The game mode is always shown; you choose the rest.",
+          "Avec Discord ouvert, ton profil affiche à quoi tu joues. Le mode de jeu est toujours affiché ; tu choisis le reste.",
+          "Wenn Discord geöffnet ist, zeigt dein Profil, was du spielst. Der Spielmodus wird immer angezeigt; den Rest wählst du.",
+          "Con Discord aperto, il tuo profilo mostra a cosa giochi. La modalità di gioco si vede sempre; il resto lo scegli tu.");
+        A("Circuito", "Track", "Circuit", "Strecke", "Circuito");
+        A("Vuelta", "Lap", "Tour", "Runde", "Giro");
+        A("Posición", "Position", "Place", "Platz", "Posizione");
         A("JUEGO", "GAME", "JEU", "SPIEL", "GIOCO");
         A("GRÁFICOS", "GRAPHICS", "GRAPHISMES", "GRAFIK", "GRAFICA");
         A("MODO", "MODE", "MODE", "MODUS", "MODALITÀ");

@@ -1,10 +1,14 @@
 # Actualizaciones del launcher de Linux y macOS (launcher/lanzador.cpp). Va con curl, que ya usa el juego para el online.
 #   python3 linux/actualiza.py mira         -> "versión url" si hay una más nueva en GitHub; si no, nada
 #   python3 linux/actualiza.py instala url  -> baja el zip y lo copia aquí, sin tocar lo del usuario
+# En el AppImage (APPIMAGE es su ruta) se baja el AppImage nuevo y sustituye al que se ha abierto.
 import json, os, platform, shutil, subprocess, sys, zipfile
 
 REPO = "AlonsoTlol/DS-Kart-Recompiled"
 DEL_USUARIO = {"rom", "ajustes.ini", "partida.sav", "repeticiones", "build"}
+
+
+APPIMAGE = os.environ.get("APPIMAGE") if os.environ.get("DSKART_APPDIR") else None
 
 
 def numeros(v):
@@ -19,12 +23,28 @@ def mira():
     d = json.loads(r.stdout)
     tag = d["tag_name"].lstrip("v")
     marca = "-Mac-" if platform.system() == "Darwin" else "-Linux-"
+    if APPIMAGE:
+        marca = "x86_64.AppImage"
     url = next((a["browser_download_url"] for a in d["assets"] if marca in a["name"]), None)
     if url and numeros(tag) > numeros(mia):
         print(tag, url)
 
 
+def instala_appimage(url):
+    nuevo = APPIMAGE + ".nuevo"
+    subprocess.run(["curl", "-fsSL", "-m", "900", "-o", nuevo, url], check=True)
+    with open(nuevo, "rb") as f:
+        cab = f.read(11)
+    if cab[:4] != b"ELF" or cab[8:11] != b"AI":  # la marca de los AppImage de tipo 2
+        os.remove(nuevo)
+        raise SystemExit("descarga mala (bad download)")
+    os.chmod(nuevo, 0o755)
+    os.replace(nuevo, APPIMAGE)
+
+
 def instala(url):
+    if APPIMAGE:
+        return instala_appimage(url)
     tmp = ".actualizacion"
     shutil.rmtree(tmp, ignore_errors=True)
     os.mkdir(tmp)

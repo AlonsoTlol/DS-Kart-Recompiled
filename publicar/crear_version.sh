@@ -4,6 +4,9 @@
 #                                                    de actualizar del launcher)
 #   DS-Kart-Recompiled-Linux-vX.Y.Z.zip              sh linux/jugar.sh
 #   DS-Kart-Recompiled-Mac-vX.Y.Z.zip                doble clic en mac/jugar.command
+#   DS-Kart-Recompiled-vX.Y.Z-x86_64.AppImage        Linux y Steam Deck sin instalar nada (linux/appimage/crear.sh, en WSL).
+#                                                    Su nombre no puede llevar "-Linux-": los launchers de Linux hasta la
+#                                                    1.0.6 cogen para actualizarse lo primero que lo lleve.
 # El de Windows tiene que salir el primero en la lista de GitHub, que va por orden alfabético: los launcher hasta la
 # 0.2.2 se quedan con el primer .zip y con otro no podrían actualizarse. Por eso "Launcher-Windows", antes que "Linux".
 # Solo llevan nuestro código (el juego se genera desde la ROM de cada uno). Nunca rom/, extraido/, generado/, build/
@@ -29,7 +32,7 @@ empaqueta() {  # sistema
 
 D=publicar/tmp/DS-Kart-Recompiled
 rm -rf publicar/tmp
-rm -f publicar/*.zip publicar/portada.mp4
+rm -f publicar/*.zip publicar/*.AppImage publicar/portada.mp4
 
 comun $D
 cp Launcher.exe publicar/README.txt portada.mp4 $D/
@@ -56,4 +59,8 @@ cp mac/jugar.command mac/LEEME.txt $D/mac/
 cp mac/LEEME.txt $D/README.txt
 empaqueta Mac
 
-ls -l publicar/*.zip
+sed 's/\r$//' linux/appimage/crear.sh > publicar/tmp_crear.sh
+MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 -- bash publicar/tmp_crear.sh . /root/appimg "publicar/DS-Kart-Recompiled-v$V-x86_64.AppImage"
+rm -f publicar/tmp_crear.sh
+
+ls -l publicar/*.zip publicar/*.AppImage

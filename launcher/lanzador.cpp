@@ -103,6 +103,10 @@ static const struct { const char *t[5]; } textos[] = {
     {{"3D con la tarjeta gráfica", "3D on the graphics card",
       "3D sur la carte graphique", "3D auf der Grafikkarte", "3D sulla scheda grafica"}},
     {{"Micrófono (para soplar)", "Microphone (for blowing)", "Microphone (pour souffler)", "Mikrofon (zum Pusten)", "Microfono (per soffiare)"}},
+    {{"Rich Presence de Discord", "Discord Rich Presence", "Rich Presence Discord", "Discord Rich Presence", "Rich Presence di Discord"}},
+    {{"Circuito", "Track", "Circuit", "Strecke", "Circuito"}},
+    {{"Vuelta", "Lap", "Tour", "Runde", "Giro"}},
+    {{"Posición", "Position", "Place", "Platz", "Posizione"}},
     {{"Actualizar a la %s", "Update to %s", "Mettre à jour vers %s", "Auf %s aktualisieren", "Aggiorna a %s"}},
     {{"Hay una versión nueva: %s", "There is a new version: %s", "Nouvelle version : %s", "Neue Version: %s", "Nuova versione: %s"}},
     {{"Actualizando...", "Updating...", "Mise à jour...", "Wird aktualisiert...", "Aggiornamento..."}},
@@ -492,10 +496,26 @@ static void pagina_ajustes(void) {
     }
     bool b = atoi(ajuste("PANTALLA_COMPLETA", "0")) != 0;
     if (ImGui::Checkbox(T("Pantalla completa"), &b)) pon_ajuste_n("PANTALLA_COMPLETA", b);
+    ImGui::SameLine(0, 20);
     b = atoi(ajuste("GPU", "0")) != 0;
     if (ImGui::Checkbox(T("3D con la tarjeta gráfica"), &b)) pon_ajuste_n("GPU", b);
+    ImGui::SameLine(0, 20);
     b = atoi(ajuste("MICRO", "1")) != 0;
     if (ImGui::Checkbox(T("Micrófono (para soplar)"), &b)) pon_ajuste_n("MICRO", b);
+
+    // Rich Presence de Discord: el modo de juego sale siempre; lo demás se elige
+    b = atoi(ajuste("DISCORD", "1")) != 0;
+    if (ImGui::Checkbox(T("Rich Presence de Discord"), &b)) pon_ajuste_n("DISCORD", b);
+    static const char *ver[][2] = {{"Circuito", "DISCORD_CIRCUITO"}, {"Vuelta", "DISCORD_VUELTA"}, {"Posición", "DISCORD_POSICION"}};
+    ImGui::BeginDisabled(!b);
+    ImGui::Indent(34);
+    for (int i = 0; i < 3; i++) {
+        if (i) ImGui::SameLine(0, 20);
+        bool si = atoi(ajuste(ver[i][1], "1")) != 0;
+        if (ImGui::Checkbox(T(ver[i][0]), &si)) pon_ajuste_n(ver[i][1], si);
+    }
+    ImGui::Unindent(34);
+    ImGui::EndDisabled();
 }
 
 static void atiende_trabajos(void) {
