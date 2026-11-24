@@ -1,0 +1,8 @@
+#!/bin/sh
+# SDL2 del AppImage, copiado en lib/ (rutas relativas a la carpeta del juego, que es desde donde se compila)
+case "$1" in
+    --cflags) echo "-Ilib/include" ;;
+    --libs) echo '-Llib lib/libSDL2-2.0.so.0 -Wl,-rpath,$ORIGIN/../lib' ;;
+    --prefix) echo lib ;;
+    *) echo 2.32.10 ;;
+esac

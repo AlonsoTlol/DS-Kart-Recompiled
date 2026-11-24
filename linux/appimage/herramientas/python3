@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "$DSKART_APPDIR/usr/python/bin/python3.12" "$@"
